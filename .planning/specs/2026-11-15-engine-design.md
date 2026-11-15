@@ -302,8 +302,8 @@ Changes against Didgeridoo, from the report's §"What … does not fit":
    builder]**.
 3. **AU parameters = the keyboard set only.** Pad sets, pad notes, the mode and the kit go
    into the AU's saved state (ClassInfo) as a block. Host automation is therefore defined only
-   for keyboard mode **[call]**. One set is about 33 knobs, 22 LFO amounts and 27 VEL
-   amounts: about 80 parameters, and about 1,400 for 17 sets, which would be unusable.
+   for keyboard mode **[call]**. One set is 34 knobs, 22 LFO amounts and 25 VEL
+   amounts: 81 parameters, and 1,377 for 17 sets, which would be unusable.
 4. **No amplitude envelope.** The reed's swing is the envelope. There is no
    Attack/Release/Glide and no Rhythm section.
 5. **Events, not a drone:** every hit restarts its gesture and, with LFO Start = Hit, its
