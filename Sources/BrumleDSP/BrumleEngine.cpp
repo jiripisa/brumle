@@ -237,8 +237,10 @@ struct BrumleEngine
     }
 
 private:
-    // At most BRUMLE_MAX_VOICES sound; the other slots let the voices being choked fade out.
-    static constexpr int kNumSlots = 20;
+    // At most BRUMLE_MAX_VOICES sound; the other slots let the voices being choked fade out. 40
+    // leave room for 16 voices choked at once while 16 new ones start (all pads hit together),
+    // so that a choked voice is cut only when even that is not enough.
+    static constexpr int kNumSlots = 40;
     static_assert(kNumSlots > BRUMLE_MAX_VOICES, "room for the voices being choked");
     static constexpr int kMaxEvents = 256;
 

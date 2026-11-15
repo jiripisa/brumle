@@ -25,23 +25,24 @@ public:
     // The length. The centre lies kCentre input samples in; it is odd, so the outermost taps
     // are not zero.
     //
-    // Measured (the response of these taps, in parts of the host rate fs): flat within 0.0003 dB
-    // up to 0.40 fs (17.6 kHz at 44.1 kHz, 19.2 kHz at 48 kHz), -0.44 dB at 0.45 fs, -6 dB at
-    // 0.5 fs, and at least 90 dB down from 0.593 fs (26.2 kHz at 44.1 kHz, 28.5 kHz at 48 kHz) on.
-    // What folds back below 0.407 fs is therefore 90 dB down. 63 taps cannot also put 90 dB at
-    // 0.55 fs: that takes 119 (Kaiser beta 9.2, 92 dB from 0.55 fs, 29 frames of latency).
-    static constexpr int kTaps = 63;
+    // Measured (the response of these taps, in parts of the host rate fs): flat within 0.0002 dB
+    // up to 0.45 fs (19.8 kHz at 44.1 kHz, 21.6 kHz at 48 kHz), -6 dB at 0.5 fs, and at least
+    // 92 dB down from 0.55 fs (24.3 kHz at 44.1 kHz, 26.4 kHz at 48 kHz) on: what folds back
+    // below 0.45 fs is 92 dB down. 90 dB at 0.55 fs is out of reach of fewer taps: 115 give 79 dB
+    // there, 63 give 26 dB.
+    static constexpr int kTaps = 119;
     static constexpr int kCentre = (kTaps - 1) / 2;
     static constexpr int kSide = (kCentre + 1) / 2;      // the non-zero taps on one side of the centre
     static_assert(kTaps % 4 == 3, "a half-band filter whose outermost taps are not zero");
 
-    // The Kaiser window's shape: 90 dB in the stopband. Kaiser's beta = 0.1102 (A - 8.7) gives
-    // 8.96 for A = 90; 9.0 measures 89.4 dB, 9.1 the first 90.
-    static constexpr double kBeta = 9.1;
+    // The Kaiser window's shape. Kaiser's beta = 0.1102 (A - 8.7) gives 8.96 for A = 90; at 119
+    // taps 9.0 measures 90.0 dB from 0.55 fs, 9.2 the most, 92.0 dB (9.3 already gives 90.4:
+    // the wider transition then reaches past 0.55 fs).
+    static constexpr double kBeta = 9.2;
 
     // How many host frames the output lags the input. The output is taken at the second sample of
     // each pair; the centre tap then sits on the first sample of the pair (kCentre - 1) / 2 pairs
-    // back, so the delay is a whole number of host frames.
+    // back, so the delay is a whole number of host frames: 29.
     static constexpr int kLatency = (kCentre - 1) / 2;
 
     // The taps: h(m) = sin(pi m / 2) / (pi m) * w(m) at the odd distances m from the centre, with

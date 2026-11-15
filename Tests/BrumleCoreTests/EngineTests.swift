@@ -325,7 +325,7 @@ struct EngineTests: EngineHarness {
             defer { brumle_destroy(host); brumle_destroy(doubled) }
             #expect(brumle_latency(doubled) == 0)
             let latency = Int(brumle_latency(host))
-            #expect(latency > 0, "\(rate) Hz")
+            #expect(latency == 29, "\(rate) Hz: the 119-tap filter's centre is 59 samples, 29 pairs and one, in")
             brumle_midi(host, 0x90, 36, 110, 37)
             brumle_midi(doubled, 0x90, 36, 110, 74)
             let y = render(host, seconds: 0.5, at: rate), z = render(doubled, seconds: 0.5, at: 2 * rate)
@@ -436,13 +436,17 @@ struct EngineTests: EngineHarness {
         #expect(mostSounding <= Int32(BRUMLE_MAX_VOICES), "\(rate) Hz, \(name): \(mostSounding) voices sounded")
         #expect(mostSounding == Int32(BRUMLE_MAX_VOICES), "\(rate) Hz, \(name): the pool was never full")
         #expect(out.allSatisfy { $0.isFinite }, "\(rate) Hz, \(name): NaN or Inf")
+        // No voice is cut: the biggest step is what sixteen hits starting together make (0.18 at
+        // 96 kHz, 0.39 at 44.1 kHz, where a sample is twice as long). Cutting the voices being
+        // choked, as a pool of 20 slots must, makes it 0.68 and 0.56.
         let biggestStep = zip(out.dropFirst(), out).map { abs($0 - $1) }.max() ?? 0
-        #expect(biggestStep <= 1, "\(rate) Hz, \(name): a step of \(biggestStep)")
+        let bound: Float = rate < 88_200 ? 0.45 : 0.25
+        #expect(biggestStep <= bound, "\(rate) Hz, \(name): a step of \(biggestStep)")
     }
 
     // All 16 pads of the default kit, in no group, on every 32nd note, each a little softer than
     // the one before it in turn: at every step sixteen voices start while the sixteen before them
-    // are choked, more than the pool's 20 slots. And the keyboard running up 24 keys, a key per
+    // are choked: 32 voices in the pool. And the keyboard running up 24 keys, a key per
     // 32nd note: 24 voices would ring.
     @Test("A flood of hits stays within 16 voices", arguments: [44_100.0, 96_000])
     func stealingStaysBounded(rate: Double) {
