@@ -82,7 +82,9 @@ void          brumle_prepare(BrumleEngine*, double sampleRate);
 void          brumle_reset(BrumleEngine*);
 // The same reset, done by the audio thread at the start of its next brumle_process() call.
 void          brumle_request_reset(BrumleEngine*);
-int           brumle_latency(const BrumleEngine*);   // host frames the output lags the MIDI
+// Host frames the output lags the MIDI: the decimator's delay below 88.2 kHz, where the voices run
+// at twice the rate, and 0 from 88.2 kHz up.
+int           brumle_latency(const BrumleEngine*);
 
 float brumle_get_plain(const BrumleEngine*, int set, int index);
 float brumle_get_normalised(const BrumleEngine*, int set, int index);

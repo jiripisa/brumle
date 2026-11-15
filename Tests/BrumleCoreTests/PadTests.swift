@@ -155,6 +155,43 @@ struct PadTests: EngineHarness {
         #expect(r < -100, "residual \(r) dB")
     }
 
+    /// `first` rings from 0 s and `second` is hit at 0.5 s, with Volume -12 dB and no breath:
+    /// what the two play together is the sum of the two alone, so the second chokes nothing.
+    private func ringOver(_ first: Int32, _ second: Int32, setup: @escaping (OpaquePointer) -> Void) -> Double {
+        let knobs = Self.dry.merging(["volume": -12]) { $1 }
+        let both = play([(first, 0), (second, 0.5)], knobs, setup: setup)
+        return residualDb(both, sum(play([(first, 0)], knobs, setup: setup), play([(second, 0.5)], knobs, setup: setup)))
+    }
+
+    @Test("A hit chokes no pad of another group")
+    func otherGroupRingsOn() {
+        let r = ringOver(0, 1) { brumle_set_pad_group($0, 0, 2); brumle_set_pad_group($0, 1, 1) }
+        #expect(r < -100, "residual \(r) dB")
+    }
+
+    @Test("A grouped hit leaves a pad with Group Off alone, and the other way round")
+    func groupOffIsApart() {
+        let grouped = ringOver(0, 1) { brumle_set_pad_group($0, 1, 1) }      // pad 1 Off rings, pad 2 in group 1 hits
+        #expect(grouped < -100, "residual \(grouped) dB")
+        let off = ringOver(0, 1) { brumle_set_pad_group($0, 0, 1) }          // pad 1 in group 1 rings, pad 2 Off hits
+        #expect(off < -100, "residual \(off) dB")
+    }
+
+    @Test("After a reset Stroke Alternate starts again from the first direction")
+    func alternateRestartsAtReset() {
+        let alternate = Self.dry.merging(["stroke": 2]) { $1 }
+        for mode in [Int32(BRUMLE_MODE_KEYBOARD), Self.pads] {
+            let engine = makePads(alternate)
+            defer { brumle_destroy(engine) }
+            brumle_set_mode(engine, mode)
+            brumle_midi(engine, 0x90, 36, 110, 0)
+            let first = render(engine, seconds: 0.5)
+            brumle_reset(engine)
+            brumle_midi(engine, 0x90, 36, 110, 0)
+            #expect(render(engine, seconds: 0.5) == first, "mode \(mode)")
+        }
+    }
+
     @Test("A velocity-0 note-on is a note-off")
     func velocityZeroIsNoteOff() {
         // The pad's own Key Up decides; the keyboard set's is Ring.
@@ -268,6 +305,32 @@ struct PadTests: EngineHarness {
             #expect(rms(switched[Self.frames(0.5)...]) > 0.001, "from mode \(mode)")
             #expect(switched == play(from: mode, switching: false), "from mode \(mode)")
         }
+    }
+
+    /// A hit on note 36 in `first` mode, and at 0.5 s another on note 36 in the other mode: with
+    /// Volume -12 dB and no breath, the sum of the two alone.
+    private func acrossModes(from first: Int32) -> Double {
+        func play(firstHit: Bool, secondHit: Bool) -> [Float] {
+            let engine = makePads(Self.dry.merging(["volume": -12]) { $1 })
+            defer { brumle_destroy(engine) }
+            brumle_set_mode(engine, first)
+            if firstHit { brumle_midi(engine, 0x90, 36, 110, 0) }
+            var out = render(engine, seconds: 0.5)
+            brumle_set_mode(engine, 1 - first)
+            if secondHit { brumle_midi(engine, 0x90, 36, 110, 0) }
+            out += render(engine, seconds: 1.0)
+            return out
+        }
+        return residualDb(play(firstHit: true, secondHit: true),
+                          sum(play(firstHit: true, secondHit: false), play(firstHit: false, secondHit: true)))
+    }
+
+    @Test("A pad hit leaves a ringing key of the same note alone, and the other way round")
+    func keysAndPadsApart() {
+        let padOverKey = acrossModes(from: Int32(BRUMLE_MODE_KEYBOARD))
+        #expect(padOverKey < -100, "residual \(padOverKey) dB")
+        let keyOverPad = acrossModes(from: Self.pads)
+        #expect(keyOverPad < -100, "residual \(keyOverPad) dB")
     }
 
     @Test("Wheels change keyboard voices, not ringing pad voices")

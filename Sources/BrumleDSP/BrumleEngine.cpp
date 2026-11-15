@@ -1,7 +1,8 @@
 // BrumleEngine.cpp - the Brumle sound engine and its C interface.
 //
 // One engine is a pool of voices (Voice.h), each a plucked reed, and seventeen knob sets: the
-// keyboard's and one per pad.
+// keyboard's and one per pad. At most 16 voices sound at once: a hit that would be the 17th
+// steals the quietest, which fades out in 3 ms.
 //   * In keyboard mode every note plays the keyboard set at its own pitch, one voice per note
 //     number: the same note again chokes its own ring and plucks anew. The voice follows the
 //     keyboard set while it rings.
@@ -9,13 +10,15 @@
 //     the pad's set at the hit and sounds at the pad's note. It chokes the voices of its own pad
 //     and, unless its group is Off, of every pad in its group.
 //
-//   voices -> sum (L, R) -> DC blocker -> kLevel -> limiter -> out
+//   voices -> sum (L, R) -> DC blocker -> kLevel -> [half-band decimator] -> limiter -> out
+//
+// Below 88.2 kHz everything up to kLevel runs at twice the host rate (the internal rate), and
+// a half-band filter (HalfBand.h) decimates it: the reed's bright bursts would otherwise fold
+// back into the band. From 88.2 kHz up the internal rate is the host's and there is no filter.
+// The limiter always runs at the host rate.
 //
 // What a voice plays is its view (viewFor): the knob set, moved by the voice's two LFOs, the
 // hit's velocity and, for a keyboard voice, the wheels.
-//
-// Still to come in this phase: voice stealing and oversampling below 88.2 kHz. Until then the
-// voices run at the host rate.
 
 // A product and a sum stay two roundings. An optimised build would otherwise fuse them into one
 // multiply-add where a debug build does not, and the two builds would render different last
@@ -24,6 +27,7 @@
 #pragma clang fp contract(off)
 
 #include "BrumleDSP.h"
+#include "HalfBand.h"
 #include "MidiQueue.h"
 #include "Params.h"
 #include "Voice.h"
@@ -162,6 +166,7 @@ struct BrumleEngine
 
     int lastNote() const { return lastNote_.load(std::memory_order_relaxed); }
     int soundingVoices() const { return sounding_.load(std::memory_order_relaxed); }
+    int latency() const { return latency_.load(std::memory_order_relaxed); }
 
     void requestReset() { resetPending_.store(true, std::memory_order_release); }   // any thread
 
@@ -181,8 +186,12 @@ struct BrumleEngine
     {
         if (!(sampleRate > 0.0) || !std::isfinite(sampleRate)) return;
         hostRate_ = sampleRate;
-        internalRate_ = sampleRate;
+        oversampling_ = sampleRate < kOversampleBelow ? 2 : 1;
+        internalRate_ = sampleRate * oversampling_;
         dcCoeff_ = (float)(1.0 - 48.0 / internalRate_);    // 0.9995 at 96 kHz, the prototype's
+        decimL_.design();
+        decimR_.design();
+        latency_.store(oversampling_ == 2 ? HalfBand::kLatency : 0, std::memory_order_relaxed);
         reset();
     }
 
@@ -194,6 +203,8 @@ struct BrumleEngine
         for (int& d : padDir_) d = -1;
         lastNote_.store(-1, std::memory_order_relaxed);
         dcL_ = dcR_ = Dc{};
+        decimL_.reset();
+        decimR_.reset();
         for (int k = 0; k < kNumLfos; ++k) freeLfo_[k].restart(kFreeSeed + (uint32_t)k);
         freeTick_ = 0;
         bend_ = modWheel_ = pressure_ = 0.0f;
@@ -226,8 +237,16 @@ struct BrumleEngine
     }
 
 private:
-    static constexpr int kNumSlots = 20;         // voice slots (Task 6 lets at most 16 sound)
+    // At most BRUMLE_MAX_VOICES sound; the other slots let the voices being choked fade out.
+    static constexpr int kNumSlots = 20;
+    static_assert(kNumSlots > BRUMLE_MAX_VOICES, "room for the voices being choked");
     static constexpr int kMaxEvents = 256;
+
+    // A stolen voice falls 40 dB in this long.
+    static constexpr float kStealMs = 3.0f;
+
+    // Below this host rate the voices run at twice it.
+    static constexpr double kOversampleBelow = 88200.0;
 
     // The output scale. The default hit at full velocity (C2, velocity 127, program Brumle, at
     // 96 kHz) peaks at 2.494 in the prototype's units, so 0.2 puts it at 0.499: -6.0 dBFS, under
@@ -323,10 +342,38 @@ private:
         }
     }
 
+    // Before a hit: if BRUMLE_MAX_VOICES voices sound, the quietest of them is choked, in
+    // kStealMs. The hit's own chokes (its note, its pad, its group) have been done by then, so a
+    // voice is stolen only when they left no room.
+    void makeRoom()
+    {
+        int sounding = 0;
+        Voice* quietest = nullptr;
+        float least = 0.0f;
+        for (Voice& v : voices_)
+        {
+            if (!v.active || v.choking) continue;
+            ++sounding;
+            const float loudness = v.loudness();
+            if (!quietest || loudness < least) { quietest = &v; least = loudness; }
+        }
+        if (sounding >= BRUMLE_MAX_VOICES) quietest->choke(kStealMs);
+    }
+
+    // The slot a hit takes: a free one, or else the quietest of those being choked, which is cut.
+    // After makeRoom at most BRUMLE_MAX_VOICES - 1 voices sound, so one of the two is there.
     Voice& freeSlot()
     {
-        for (Voice& v : voices_) if (!v.active) return v;
-        return voices_[0];                       // the prototype's rule; Task 6 steals the quietest
+        Voice* quietest = nullptr;
+        float least = 0.0f;
+        for (Voice& v : voices_)
+        {
+            if (!v.active) return v;
+            if (!v.choking) continue;
+            const float loudness = v.loudness();
+            if (!quietest || loudness < least) { quietest = &v; least = loudness; }
+        }
+        return quietest ? *quietest : voices_[0];
     }
 
     // The direction of a stroke: Out, In, or the other way from the last stroke `last` made.
@@ -351,6 +398,7 @@ private:
         // One voice per note number: the same note again chokes its own ring, each with its Damp.
         for (Voice& v : voices_)
             if (v.active && v.origin.kind == kOriginKey && v.origin.note == note) v.choke(v.knob(kDamp));
+        makeRoom();
         Voice& slot = freeSlot();
         const float dir = direction((int)std::lround(keyView_.v[kStroke]), lastDir_[note]);
         slot.take(Origin{ kOriginKey, note, -1, 0 }, note, velocity);
@@ -366,6 +414,7 @@ private:
         for (Voice& v : voices_)
             if (v.active && v.origin.kind == kOriginPad && (v.origin.pad == pad || (group != 0 && v.origin.group == group)))
                 v.choke(v.knob(kDamp));
+        makeRoom();
         Voice& slot = freeSlot();
         slot.take(Origin{ kOriginPad, note, pad, group }, padNote(pad), velocity);
         const int set = padSet(pad);
@@ -396,33 +445,52 @@ private:
 
     struct Dc { float x1 = 0, y1 = 0; };
 
-    // One channel of the bus: DC blocker, level, limiter. Values too small to hear are flushed to
-    // zero, the blocker's memory included, so that silence is exact and no denormal tail lingers.
+    // One channel of the bus at the internal rate: DC blocker and level. The blocker's memory is
+    // flushed to zero when it is too small to hear, so that silence is exact and no denormal
+    // tail lingers.
     float bus(Dc& dc, float x) const
     {
         const float y = x - dc.x1 + dcCoeff_ * dc.y1;
         dc.x1 = x;
         dc.y1 = std::fabs(y) < 1e-20f ? 0.0f : y;
-        const float out = limit(y * kLevel);
+        return y * kLevel;
+    }
+
+    // The bus at the host rate: the limiter, and the same flush.
+    static float limited(float y)
+    {
+        const float out = limit(y);
         return std::fabs(out) < 1e-20f ? 0.0f : out;
     }
 
+    // One internal sample: the voices, summed, through the bus.
+    StereoSample tick()
+    {
+        if (freeTick_-- <= 0) { turnFreeLfos(); freeTick_ = 15; }
+        float l = 0.0f, r = 0.0f;
+        for (Voice& v : voices_)
+        {
+            if (!v.active) continue;
+            if (v.controlDue()) { viewFor(v, v.view); v.turnLfos(); }   // the knobs as this tick sees them
+            const StereoSample s = v.process();
+            l += s.l; r += s.r;
+        }
+        return { bus(dcL_, l), bus(dcR_, r) };
+    }
+
+    // Host frames [from, to): one internal sample each, or two decimated into one.
     void render(float* outL, float* outR, int from, int to)
     {
         for (int i = from; i < to; ++i)
         {
-            if (freeTick_-- <= 0) { turnFreeLfos(); freeTick_ = 15; }
-            float l = 0.0f, r = 0.0f;
-            for (Voice& v : voices_)
+            StereoSample y = tick();
+            if (oversampling_ == 2)
             {
-                if (!v.active) continue;
-                if (v.controlDue()) { viewFor(v, v.view); v.turnLfos(); }   // the knobs as this tick sees them
-                const StereoSample s = v.process();
-                l += s.l; r += s.r;
+                const StereoSample second = tick();
+                y = { decimL_.process(y.l, second.l), decimR_.process(y.r, second.r) };
             }
-            const float yl = bus(dcL_, l), yr = bus(dcR_, r);
-            outL[i] = yl;
-            if (outR) outR[i] = yr;
+            outL[i] = limited(y.l);
+            if (outR) outR[i] = limited(y.r);
         }
     }
 
@@ -434,6 +502,7 @@ private:
     std::atomic<int>   padGroup_[BRUMLE_NUM_PADS];
     std::atomic<int>   lastNote_{-1};
     std::atomic<int>   sounding_{0};
+    std::atomic<int>   latency_{0};
     std::atomic<bool>  resetPending_{false};
 
     MidiQueue posted_;
@@ -441,7 +510,8 @@ private:
     int       numEvents_ = 0;
 
     // --- audio thread ----------------------------------------------------------------------
-    double hostRate_ = 44100.0, internalRate_ = 44100.0;
+    double hostRate_ = 44100.0, internalRate_ = 88200.0;
+    int    oversampling_ = 2;                                 // internal samples per host frame
     float  dcCoeff_ = 0.9995f;
     float  keyNorm_[kNumParams] = {};
     KnobView keyView_{};
@@ -453,6 +523,7 @@ private:
     int    lastDir_[128];                                     // per keyboard note
     int    padDir_[BRUMLE_NUM_GROUPS + BRUMLE_NUM_PADS];       // per group 1-16, then per pad with no group
     Dc     dcL_, dcR_;
+    HalfBand decimL_, decimR_;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -532,7 +603,7 @@ void brumle_destroy(BrumleEngine* e) { delete e; }
 void brumle_prepare(BrumleEngine* e, double sampleRate) { if (e) e->prepare(sampleRate); }
 void brumle_reset(BrumleEngine* e) { if (e) e->reset(); }
 void brumle_request_reset(BrumleEngine* e) { if (e) e->requestReset(); }
-int  brumle_latency(const BrumleEngine*) { return 0; }      // no oversampling yet (Task 6)
+int  brumle_latency(const BrumleEngine* e) { return e ? e->latency() : 0; }
 
 float brumle_get_plain(const BrumleEngine* e, int set, int index)
 {
