@@ -2,10 +2,10 @@
 //
 // The programs are the prototype's (.planning/research/spike/brumle_spike.cpp), in engine units.
 
-// A product and a sum stay two operations. Fused into one they round once instead of twice, and
-// an optimised build fuses where an unoptimised one does not: without this line two programs
-// rendered samples that differed in their last bit between a debug and a release build, and the
-// sound's references could hold for one of them only.
+// A product and a sum stay two roundings. An optimised build would otherwise fuse them into one
+// multiply-add where a debug build does not, and the two builds would render different last
+// bits: the engine's sound must be the same in both, and the same as the references it is
+// tested against.
 #pragma clang fp contract(off)
 
 #include "Params.h"
