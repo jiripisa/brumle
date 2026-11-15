@@ -6,53 +6,7 @@ import BrumleDSP
 /// What the sound engine promises beyond matching the prototype: its level, how it chokes and
 /// stops, and how its C interface copes with what callers hand it.
 @Suite("Engine")
-struct EngineTests {
-
-    static let rate = 96_000.0
-    static let keyboard = Int32(BRUMLE_KEYBOARD_SET)
-
-    private static func index(_ identifier: String) -> Int32 { Int32(Parameters.named(identifier)!.index) }
-
-    /// A fresh engine at 96 kHz in keyboard mode, with `knobs` (plain values) in the keyboard set.
-    private func makeEngine(_ knobs: [String: Float] = [:]) -> OpaquePointer {
-        let engine = brumle_create()!
-        brumle_prepare(engine, Self.rate)
-        brumle_reset(engine)
-        brumle_set_mode(engine, Int32(BRUMLE_MODE_KEYBOARD))
-        for (key, value) in knobs { brumle_set_plain(engine, Self.keyboard, Self.index(key), value) }
-        return engine
-    }
-
-    /// Renders `seconds` of the left channel in blocks of 128 frames.
-    private func render(_ engine: OpaquePointer, seconds: Double) -> [Float] {
-        render(engine, frames: Int((seconds * Self.rate).rounded()))
-    }
-
-    private func render(_ engine: OpaquePointer, frames: Int) -> [Float] {
-        var out = [Float](repeating: 0, count: frames)
-        var start = 0
-        out.withUnsafeMutableBufferPointer { buffer in
-            while start < frames {
-                let count = min(128, frames - start)
-                brumle_process(engine, buffer.baseAddress! + start, nil, Int32(count))
-                start += count
-            }
-        }
-        return out
-    }
-
-    private func rms<C: Collection>(_ x: C) -> Double where C.Element == Float {
-        (x.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(max(x.count, 1))).squareRoot()
-    }
-
-    /// dB of (a - b) re b.
-    private func residualDb(_ a: ArraySlice<Float>, _ b: ArraySlice<Float>) -> Double {
-        var difference = 0.0, signal = 0.0
-        for (x, y) in zip(a, b) { difference += Double(x - y) * Double(x - y); signal += Double(y) * Double(y) }
-        return 10 * log10(difference / signal)
-    }
-
-    private static let plain: [String: Float] = ["stroke": 0, "vary": 0, "air": 0]   // Out, no randomness
+struct EngineTests: EngineHarness {
 
     /// The same with no breath. The breath gives the bursts a DC component, and the DC blocker
     /// takes ~20 ms to forget it after a voice stops: that would hide what the reed does.
@@ -172,6 +126,22 @@ struct EngineTests {
         #expect(brumle_sounding_voices(engine) == 0)
     }
 
+    @Test("A reset forgets the last note; MIDI posted before a requested reset plays after it")
+    func resetAndPostedMidi() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        brumle_midi(engine, 0x90, 43, 110, 0)
+        _ = render(engine, frames: 128)
+        #expect(brumle_last_note(engine) == 43)
+        brumle_reset(engine)
+        #expect(brumle_last_note(engine) == -1)
+
+        brumle_post_midi(engine, 0x90, 36, 110, 0)
+        brumle_request_reset(engine)
+        #expect((render(engine, seconds: 0.2).map(abs).max() ?? 0) > 0.05)
+        #expect(brumle_last_note(engine) == 36)
+    }
+
     @Test("MIDI at a sample offset starts the hit at that sample")
     func sampleOffset() {
         let engine = makeEngine(Self.plain)
@@ -224,8 +194,10 @@ struct EngineTests {
             brumle_send_to_pad(engine, pad)
             #expect(brumle_pad_note(engine, pad) == -1 && brumle_pad_group(engine, pad) == 0)
         }
+        let group = brumle_pad_group(engine, 0)
         brumle_set_pad_group(engine, 0, 17)
-        #expect(brumle_pad_group(engine, 0) == 0)
+        brumle_set_pad_group(engine, 0, -1)
+        #expect(brumle_pad_group(engine, 0) == group)
         #expect(abs(brumle_get_plain(engine, Self.keyboard, ring) - 4) < 1e-5)
 
         // A null engine: every call returns quietly.

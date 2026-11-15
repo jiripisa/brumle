@@ -1,16 +1,21 @@
 // BrumleEngine.cpp - the Brumle sound engine and its C interface.
 //
 // One engine is a pool of voices (Voice.h), each a plucked reed, and seventeen knob sets: the
-// keyboard's and one per pad. In keyboard mode every note plays the keyboard set at its own
-// pitch, one voice per note number: the same note again chokes its own ring and plucks anew.
+// keyboard's and one per pad.
+//   * In keyboard mode every note plays the keyboard set at its own pitch, one voice per note
+//     number: the same note again chokes its own ring and plucks anew. The voice follows the
+//     keyboard set while it rings.
+//   * In pad mode notes 36-51 hit pads 1-16. A pad hit is a key press frozen: its voice copies
+//     the pad's set at the hit and sounds at the pad's note. It chokes the voices of its own pad
+//     and, unless its group is Off, of every pad in its group.
 //
 //   voices -> sum (L, R) -> DC blocker -> kLevel -> limiter -> out
 //
 // What a voice plays is its view (viewFor): the knob set, moved by the voice's two LFOs, the
 // hit's velocity and, for a keyboard voice, the wheels.
 //
-// Still to come in this phase: pad mode, voice stealing and oversampling below 88.2 kHz. Until
-// then the voices run at the host rate.
+// Still to come in this phase: voice stealing and oversampling below 88.2 kHz. Until then the
+// voices run at the host rate.
 
 // A product and a sum stay two roundings. An optimised build would otherwise fuse them into one
 // multiply-add where a debug build does not, and the two builds would render different last
@@ -68,6 +73,10 @@ constexpr Moves kMoves = makeMoves();
 // free-running ones at every reset.
 constexpr uint32_t kHitSeed = 0x9E3779B9u, kFreeSeed = 0x2F6E2B11u;
 bool validPad(int pad) { return pad >= 0 && pad < BRUMLE_NUM_PADS; }
+int  padSet(int pad) { return pad + 1; }
+
+// The note Send to pad gives a pad when no note has been played: C2.
+constexpr int kSendNoteIfNone = 36;
 
 // Didgeridoo's tanh: a Padé approximant, exact enough for a limiter and cheap.
 inline float fastTanh(float x)
@@ -91,11 +100,7 @@ struct BrumleEngine
     {
         for (int s = 0; s < BRUMLE_NUM_SETS; ++s)
             for (int i = 0; i < kNumParams; ++i) sets_[s][i].store(param(i).toNormalised(param(i).def), std::memory_order_relaxed);
-        for (int pad = 0; pad < BRUMLE_NUM_PADS; ++pad)
-        {
-            padNote_[pad].store(BRUMLE_FIRST_PAD_NOTE + pad, std::memory_order_relaxed);
-            padGroup_[pad].store(0, std::memory_order_relaxed);
-        }
+        loadDefaultKit();
         prepare(44100.0);
     }
 
@@ -130,6 +135,31 @@ struct BrumleEngine
     int  padGroup(int pad) const { return padGroup_[pad].load(std::memory_order_relaxed); }
     void setPadGroup(int pad, int group) { if (group >= 0 && group <= BRUMLE_NUM_GROUPS) padGroup_[pad].store(group, std::memory_order_relaxed); }
 
+    // Send to pad: the keyboard set and its program go to the pad's set, the last note played to
+    // the pad's note. The group stays.
+    void sendToPad(int pad)
+    {
+        const int set = padSet(pad);
+        for (int i = 0; i < kNumParams; ++i) sets_[set][i].store(getNormalised(BRUMLE_KEYBOARD_SET, i), std::memory_order_relaxed);
+        program_[set].store(program(BRUMLE_KEYBOARD_SET), std::memory_order_relaxed);
+        const int last = lastNote();
+        padNote_[pad].store(last >= 0 ? last : kSendNoteIfNone, std::memory_order_relaxed);
+    }
+
+    void loadDefaultKit()
+    {
+        for (int pad = 0; pad < BRUMLE_NUM_PADS; ++pad)
+        {
+            const KitPad& k = kDefaultKit[(size_t)pad];
+            const int s = padSet(pad);
+            setProgram(s, k.program);
+            set(s, kOctave, param(kOctave).def);             // a program leaves the octave alone
+            for (const Override& o : k.overrides) if (validParam(o.param)) set(s, o.param, o.value);
+            setPadNote(pad, k.note);
+            setPadGroup(pad, k.group);
+        }
+    }
+
     int lastNote() const { return lastNote_.load(std::memory_order_relaxed); }
     int soundingVoices() const { return sounding_.load(std::memory_order_relaxed); }
 
@@ -161,6 +191,8 @@ struct BrumleEngine
         for (Voice& v : voices_) v = Voice();
         rng_.seed(12345);
         for (int& d : lastDir_) d = -1;
+        for (int& d : padDir_) d = -1;
+        lastNote_.store(-1, std::memory_order_relaxed);
         dcL_ = dcR_ = Dc{};
         for (int k = 0; k < kNumLfos; ++k) freeLfo_[k].restart(kFreeSeed + (uint32_t)k);
         freeTick_ = 0;
@@ -219,10 +251,10 @@ private:
     // with every amount and wheel at rest, the view is the knob set itself, value for value.
     void viewFor(const Voice& v, KnobView& out) const
     {
-        const bool keyboard = v.followsKeyboard;
+        const bool keyboard = v.followsKeyboard();
         const float* set = keyboard ? keyNorm_ : v.setAtHit;
-        if (keyboard) std::copy(keyView_.v, keyView_.v + kNumParams, out.v);
-        else for (int i = 0; i < kNumParams; ++i) out.v[i] = param(i).toPlain(set[i]);
+        const float* plain = keyboard ? keyView_.v : v.plainAtHit;
+        std::copy(plain, plain + kNumParams, out.v);
 
         float lfoValue[kNumLfos];
         for (int k = 0; k < kNumLfos; ++k)
@@ -273,10 +305,15 @@ private:
 
     void handleMidi(const MidiEvent& ev)
     {
-        const bool keyboard = mode() == BRUMLE_MODE_KEYBOARD;
-        if (ev.isNoteOn()) { if (keyboard) noteOn(ev.data1, ev.data2 / 127.0f); }
-        else if (ev.isNoteOff()) { if (keyboard) noteOff(ev.data1); }
+        if (ev.isNoteOn())
+        {
+            const float velocity = ev.data2 / 127.0f;
+            if (mode() == BRUMLE_MODE_KEYBOARD) noteOn(ev.data1, velocity);
+            else if (validPad(ev.data1 - BRUMLE_FIRST_PAD_NOTE)) padHit(ev.data1 - BRUMLE_FIRST_PAD_NOTE, ev.data1, velocity);
+        }
+        else if (ev.isNoteOff()) noteOff(ev.data1);
         else if (ev.isAllNotesOff()) { for (Voice& v : voices_) if (v.active) v.choke(v.knob(kDamp)); }
+        else if (ev.isController() && ev.data1 == 121) bend_ = modWheel_ = pressure_ = 0.0f;   // Reset All Controllers
         else if (ev.isController() && ev.data1 == 1) modWheel_ = ev.data2 / 127.0f;
         else if (ev.isAftertouch()) pressure_ = ev.data1 / 127.0f;
         else if (ev.isPitchBend())          // -1 at the bottom, +1 at the top
@@ -286,29 +323,66 @@ private:
         }
     }
 
+    Voice& freeSlot()
+    {
+        for (Voice& v : voices_) if (!v.active) return v;
+        return voices_[0];                       // the prototype's rule; Task 6 steals the quietest
+    }
+
+    // The direction of a stroke: Out, In, or the other way from the last stroke `last` made.
+    static float direction(int stroke, int& last)
+    {
+        if (stroke == kStrokeIn) return -1.0f;
+        if (stroke != kStrokeAlternate) return 1.0f;
+        last = -last;
+        return (float)last;
+    }
+
+    // What is taken at the hit is taken from the hit's view: its velocity moves Ring and Tune.
+    void pluck(Voice& v, const float* plain, float dir)
+    {
+        startLfos(v, (int)std::lround(plain[kLfoStart]));
+        viewFor(v, v.view);
+        v.start(dir, rng_, internalRate_);
+    }
+
     void noteOn(int note, float velocity)
     {
         // One voice per note number: the same note again chokes its own ring, each with its Damp.
-        for (Voice& v : voices_) if (v.active && v.note == note) v.choke(v.knob(kDamp));
-        Voice* slot = nullptr;
-        for (Voice& v : voices_) if (!v.active) { slot = &v; break; }
-        if (!slot) slot = &voices_[0];          // the prototype's rule; Task 6 steals the quietest
-        float dir = 1.0f;                        // Out
-        const int stroke = (int)std::lround(keyView_.v[kStroke]);
-        if (stroke == kStrokeIn) dir = -1.0f;
-        else if (stroke == kStrokeAlternate) { lastDir_[note] = -lastDir_[note]; dir = (float)lastDir_[note]; }
-        // What is taken at the hit is taken from the hit's view: its velocity moves Ring and Tune.
-        slot->take(note, velocity, true);
-        startLfos(*slot, (int)std::lround(keyView_.v[kLfoStart]));
-        viewFor(*slot, slot->view);
-        slot->start(dir, rng_, internalRate_);
+        for (Voice& v : voices_)
+            if (v.active && v.origin.kind == kOriginKey && v.origin.note == note) v.choke(v.knob(kDamp));
+        Voice& slot = freeSlot();
+        const float dir = direction((int)std::lround(keyView_.v[kStroke]), lastDir_[note]);
+        slot.take(Origin{ kOriginKey, note, -1, 0 }, note, velocity);
+        pluck(slot, keyView_.v, dir);
         lastNote_.store(note, std::memory_order_relaxed);
     }
 
+    // A pad hit chokes its own pad's voices and, unless its group is Off, every pad voice of its
+    // group, each with its Damp. Stroke Alternate alternates per group, or per pad with no group.
+    void padHit(int pad, int note, float velocity)
+    {
+        const int group = padGroup(pad);
+        for (Voice& v : voices_)
+            if (v.active && v.origin.kind == kOriginPad && (v.origin.pad == pad || (group != 0 && v.origin.group == group)))
+                v.choke(v.knob(kDamp));
+        Voice& slot = freeSlot();
+        slot.take(Origin{ kOriginPad, note, pad, group }, padNote(pad), velocity);
+        const int set = padSet(pad);
+        for (int i = 0; i < kNumParams; ++i)        // the pad's set, frozen at the hit
+        {
+            slot.setAtHit[i] = getNormalised(set, i);
+            slot.plainAtHit[i] = param(i).toPlain(slot.setAtHit[i]);
+        }
+        int& last = group != 0 ? padDir_[group - 1] : padDir_[BRUMLE_NUM_GROUPS + pad];
+        pluck(slot, slot.plainAtHit, direction((int)std::lround(slot.plainAtHit[kStroke]), last));
+    }
+
+    // A released key stops the voices it started whose Key Up is Damp: a key's, or a pad's.
     void noteOff(int note)
     {
         for (Voice& v : voices_)
-            if (v.active && v.note == note && (int)std::lround(v.knob(kKeyUp)) == kKeyUpDamp) v.choke(v.knob(kDamp));
+            if (v.active && v.origin.note == note && (int)std::lround(v.knob(kKeyUp)) == kKeyUpDamp) v.choke(v.knob(kDamp));
     }
 
     // The peaks are left alone up to 0.6 and bent towards 1 above it (Didgeridoo's limiter).
@@ -376,7 +450,8 @@ private:
     float  bend_ = 0.0f, modWheel_ = 0.0f, pressure_ = 0.0f;   // -1..1, 0..1, 0..1
     Voice  voices_[kNumSlots];
     std::mt19937 rng_{12345};
-    int    lastDir_[128];
+    int    lastDir_[128];                                     // per keyboard note
+    int    padDir_[BRUMLE_NUM_GROUPS + BRUMLE_NUM_PADS];       // per group 1-16, then per pad with no group
     Dc     dcL_, dcR_;
 };
 
@@ -485,8 +560,8 @@ void brumle_set_pad_note(BrumleEngine* e, int pad, int note) { if (e && validPad
 int  brumle_pad_group(const BrumleEngine* e, int pad) { return e && validPad(pad) ? e->padGroup(pad) : 0; }
 void brumle_set_pad_group(BrumleEngine* e, int pad, int group) { if (e && validPad(pad)) e->setPadGroup(pad, group); }
 int  brumle_last_note(const BrumleEngine* e) { return e ? e->lastNote() : -1; }
-void brumle_send_to_pad(BrumleEngine* e, int pad) { if (!e || !validPad(pad)) return; }   // Task 5
-void brumle_load_default_kit(BrumleEngine* e) { if (!e) return; }                         // Task 5
+void brumle_send_to_pad(BrumleEngine* e, int pad) { if (e && validPad(pad)) e->sendToPad(pad); }
+void brumle_load_default_kit(BrumleEngine* e) { if (e) e->loadDefaultKit(); }
 int  brumle_sounding_voices(const BrumleEngine* e) { return e ? e->soundingVoices() : 0; }
 
 void brumle_post_midi(BrumleEngine* e, int status, int data1, int data2, int sampleOffset)

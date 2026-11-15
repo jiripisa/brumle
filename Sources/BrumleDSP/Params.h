@@ -8,6 +8,7 @@
 #include "BrumleDSP.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -157,5 +158,24 @@ int sectionOf(int param);
 struct Program { const char* name; float values[kNumParams]; };
 const std::vector<Program>& programs();
 bool programSets(int param);     // false for the knobs a program leaves alone
+
+// The built-in programs, in the order of programs().
+enum ProgramIndex { kBrumle, kMolln, kKhomus, kMorsing, kDanMoi, kBamboo, kGenggong, kNumPrograms };
+
+// One knob set to a plain value; param -1 is no override.
+struct Override { int param = -1; float value = 0.0f; };
+
+// The default kit (engine design §7): what each pad holds when the engine is created or the kit is
+// loaded. A pad's set is a program with a few overrides and Octave 0, at a note, in a mute group
+// (0 = Off). The kit is a call, to be approved by ear.
+constexpr int kMaxKitOverrides = 4;
+struct KitPad
+{
+    int program;
+    int note;
+    int group;
+    Override overrides[kMaxKitOverrides];
+};
+extern const std::array<KitPad, BRUMLE_NUM_PADS> kDefaultKit;
 
 } // namespace brumle

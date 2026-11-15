@@ -107,8 +107,6 @@ const Param* makeParams()
     return table;
 }
 
-struct Override { int param; float value; };
-
 Program makeProgram(const char* name, std::initializer_list<Override> overrides)
 {
     Program p; p.name = name;
@@ -190,5 +188,42 @@ const std::vector<Program>& programs()
 
 // The octave belongs to the player's hands, not to the sound.
 bool programSets(int param) { return param != kOctave; }
+
+// ---------------------------------------------------------------------------------------------
+// The default kit, from the prototype's overlapping kit (brumle_spike.cpp:376-388): pads 1-2 are
+// one harp, the second ringing short; the other programs each at a pitch of their own. Pads
+// 9-16 repeat pads 1-8 a fifth higher, groups 1-4 becoming 5-8.
+// ---------------------------------------------------------------------------------------------
+namespace {
+
+constexpr KitPad kKitLow[BRUMLE_NUM_PADS / 2] = {
+    { kBrumle,   36, 1, {} },
+    { kBrumle,   36, 1, { { kRing, 0.6f } } },
+    { kBamboo,   39, 0, {} },
+    { kMolln,    43, 2, {} },
+    { kMorsing,  48, 3, {} },
+    { kKhomus,   38, 4, {} },
+    { kDanMoi,   39, 0, {} },
+    { kGenggong, 41, 0, {} },
+};
+
+constexpr std::array<KitPad, BRUMLE_NUM_PADS> makeDefaultKit()
+{
+    std::array<KitPad, BRUMLE_NUM_PADS> kit{};
+    constexpr int half = BRUMLE_NUM_PADS / 2;
+    for (int pad = 0; pad < half; ++pad)
+    {
+        kit[(size_t)pad] = kKitLow[pad];
+        KitPad high = kKitLow[pad];
+        high.note += 7;
+        if (high.group != 0) high.group += 4;
+        kit[(size_t)(pad + half)] = high;
+    }
+    return kit;
+}
+
+} // namespace
+
+const std::array<KitPad, BRUMLE_NUM_PADS> kDefaultKit = makeDefaultKit();
 
 } // namespace brumle

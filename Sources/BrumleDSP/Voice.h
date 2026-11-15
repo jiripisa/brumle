@@ -5,7 +5,10 @@
 //   * the rate is the engine's internal rate, not a fixed 96 kHz;
 //   * the knobs come from a KnobView (plain values, percent knobs divided by 100 here), which
 //     the engine computes for the voice (Engine::viewFor): the knob set, moved by the voice's
-//     LFOs, the hit's velocity and the wheels;
+//     LFOs, the hit's velocity and, for a keyboard voice, the wheels;
+//   * a voice knows its origin, a key or a pad (Origin): what chokes it and which knob set it
+//     plays. A key's voice plays the keyboard set as it is now; a pad's plays its pad's set as
+//     it stood at the hit;
 //   * Ring, Vel Sens, Stroke, Vary, Tune and Octave are taken at the hit; every other knob is
 //     read again from the view at each control tick, so a voice can follow the knobs while it
 //     rings. Vary's random draws are kept as factors and applied to the knob each time;
@@ -39,6 +42,19 @@ struct KnobView
 
 struct StereoSample { float l, r; };
 
+// Where a voice comes from: a key in keyboard mode, or a pad in pad mode. `note` is the MIDI note
+// that started it, whose note-off releases it; a pad's voice sounds at its pad's note instead.
+// `group` is the pad's mute group at the hit (0 = Off).
+enum OriginKind { kOriginKey, kOriginPad };
+
+struct Origin
+{
+    int kind = kOriginKey;
+    int note = 0;
+    int pad = -1;
+    int group = 0;
+};
+
 inline float dbToGain(float db) { return std::pow(10.0f, db / 20.0f); }
 
 // Trapezoidal state-variable band-pass (as Didgeridoo's TractResonance). Returns the band-pass
@@ -68,12 +84,13 @@ constexpr float kHarmonicRef = 0.35f;
 struct Voice
 {
     bool active = false, choking = false;
-    bool followsKeyboard = false;   // a keyboard voice: it plays the keyboard set as it is now
-    int note = 0;
+    Origin origin;
+    int note = 0;                   // the pitch, before the set's Octave and Tune
     KnobView view{};
-    // The knob set (normalised) as it stood at the hit, for a voice that does not follow the
-    // keyboard (a pad's, Task 5): what its view is computed from.
+    // A pad's knob set as it stood at the hit, normalised and as plain values: what its view is
+    // computed from. A key's voice reads the keyboard set instead.
     float setAtHit[kNumParams] = {};
+    float plainAtHit[kNumParams] = {};
     double rate = 96000.0, phase = 0, inc = 0, t = 0;
 
     // Taken at the hit.
@@ -100,13 +117,16 @@ struct Voice
     // True when the next sample starts a control tick: the moment to refresh the view.
     bool controlDue() const { return ctl <= 0; }
 
-    // A hit, in two steps. `take` forgets the last hit and takes the note and the velocity; the
-    // engine then sets the LFOs and computes the view the hit sees, and `start` plucks the reed
-    // with it: what is taken at the hit is taken from that view.
-    void take(int n, float velocity, bool keyboard)
+    // True for a key's voice: it plays the keyboard set as it is now, whatever the mode.
+    bool followsKeyboard() const { return origin.kind == kOriginKey; }
+
+    // A hit, in two steps. `take` forgets the last hit and takes the origin, the pitch and the
+    // velocity; the engine then copies a pad's set, sets the LFOs and computes the view the hit
+    // sees, and `start` plucks the reed with it: what is taken at the hit is taken from that view.
+    void take(const Origin& from, int pitch, float velocity)
     {
         *this = Voice();
-        note = n; vel = velocity; followsKeyboard = keyboard;
+        origin = from; note = pitch; vel = velocity;
     }
 
     void start(float direction, std::mt19937& rng, double internalRate)

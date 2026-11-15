@@ -77,6 +77,8 @@ int         brumle_program_sets(int param);           // 0 for "octave", which p
 BrumleEngine* brumle_create(void);
 void          brumle_destroy(BrumleEngine*);
 void          brumle_prepare(BrumleEngine*, double sampleRate);
+// Silences every voice, puts the wheels at rest and forgets the last note. The knob sets, the
+// pads (notes, groups) and the mode stay as they are.
 void          brumle_reset(BrumleEngine*);
 // The same reset, done by the audio thread at the start of its next brumle_process() call.
 void          brumle_request_reset(BrumleEngine*);
@@ -93,21 +95,25 @@ void  brumle_set_program(BrumleEngine*, int set, int program);
 int   brumle_get_program(const BrumleEngine*, int set);
 
 // The mode: the keyboard plays the keyboard set at the pitch of each key; the pads play their
-// own sets at the pitch of each pad.
+// own sets at the pitch of each pad, hit by notes 36-51 (other notes are ignored). A voice
+// already ringing when the mode changes rings on as it was.
 void  brumle_set_mode(BrumleEngine*, int mode);
 int   brumle_get_mode(const BrumleEngine*);
 
-// Pads: each has a pitch (a MIDI note) and a mute group. A hit on a pad chokes the sounding
-// voices of its group (0 = Off: no group). Like the pitch, the group belongs to the pad, not to
-// its set.
+// Pads: each has a pitch (a MIDI note) and a mute group. A hit on a pad chokes its own pad's
+// sounding voices and those of every pad in its group (0 = Off: no group). Like the pitch, the
+// group belongs to the pad, not to its set. A pad's voice copies the pad's set at the hit and
+// does not follow later changes to it, nor the wheels.
 int   brumle_pad_note(const BrumleEngine*, int pad);
 void  brumle_set_pad_note(BrumleEngine*, int pad, int note);
 int   brumle_pad_group(const BrumleEngine*, int pad);
 void  brumle_set_pad_group(BrumleEngine*, int pad, int group);   // 0 = Off
-int   brumle_last_note(const BrumleEngine*);          // last keyboard-mode note-on, -1 if none
-// Copies the keyboard set and the pitch of the last note (36 if none) to a pad; its group is kept.
+int   brumle_last_note(const BrumleEngine*);          // last keyboard-mode note-on since the last reset, -1 if none
+// Copies the keyboard set (and its program) and the pitch of the last note (36 if none) to a
+// pad; its group is kept.
 void  brumle_send_to_pad(BrumleEngine*, int pad);
-// A kit built from the programs at various pitches, so that pad mode sounds at once.
+// A kit built from the programs at various pitches, so that pad mode sounds at once: what the
+// pads hold when the engine is created. Overwrites every pad's set, note and group.
 void  brumle_load_default_kit(BrumleEngine*);
 int   brumle_sounding_voices(const BrumleEngine*);    // voices playing and not being choked
 

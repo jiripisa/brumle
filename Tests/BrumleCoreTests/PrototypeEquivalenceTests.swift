@@ -31,8 +31,9 @@ struct NamedScore: Sendable, CustomTestStringConvertible {
     }
 }
 
-/// Keyboard mode against the listening prototype the author approved: the engine renders the
-/// prototype's scores at 96 kHz and must give the prototype's samples, up to one output scale.
+/// The engine against the listening prototype the author approved: the engine renders the
+/// prototype's scores at 96 kHz, in keyboard mode and in pad mode, and must give the prototype's
+/// samples, up to one output scale.
 @Suite("Prototype equivalence")
 struct PrototypeEquivalenceTests {
 
@@ -126,17 +127,47 @@ struct PrototypeEquivalenceTests {
                 ["ring": 0.8, "edge": 9, "clang": 40, "open": 100]),
     ]
 
+    /// 14: four sounds over each other, 4 bars at 100 BPM (brumle_spike.cpp:376-388): the default
+    /// at C2 on beats 1 and 3, Molln at G2 on the offbeats, Morsing at C3 on beats 2 and 4, and
+    /// Bamboo at D#2 on the last 16th of every beat. The hits carry the prototype's pitches.
+    static let overlappingKit: Score = {
+        let q = 60.0 / 100.0, e = q / 2, sx = q / 4
+        var hits: [ScoreHit] = []
+        func hit(_ t: Double, _ note: UInt8, _ accent: Float) {
+            hits.append(ScoreHit(frame: frame(t), note: note, velocity: PrototypeScores.velocity(accent), chokeOnly: false))
+        }
+        for bar in 0..<4 {
+            let b0 = 0.2 + Double(bar) * 4 * q
+            for beat in [0, 2] { hit(b0 + Double(beat) * q, 36, 1.0) }
+            for i in 0..<4 { hit(b0 + Double(i) * q + e, 43, 0.6) }
+            for beat in [1, 3] { hit(b0 + Double(beat) * q, 48, 0.9) }
+            for i in 0..<16 where i % 4 == 3 { hit(b0 + Double(i) * sx, 39, 0.45) }
+        }
+        hits = hits.enumerated().sorted { ($0.element.frame, $0.offset) < ($1.element.frame, $1.offset) }.map(\.element)
+        return Score(hits: hits, frames: Int(((0.2 + 16 * q + 2.0) * PrototypeScores.sampleRate).rounded(.down)))
+    }()
+
+    /// The kit's pads, in groups Off: the prototype's pitch of each, the pad and program that play
+    /// it in the engine, and the prototype's values for the reference (as in 13).
+    static let kitPads: [(pitch: UInt8, program: Int32, reference: [String: Float])] = [
+        (36, 0, [:]),
+        (43, 1, ["ring": 7.5, "sweep": 0, "vowel": 1050, "reso": 25, "open": 0, "offset": 0]),
+        (48, 3, ["ring": 1, "edge": 26, "sweeptime": 60, "puff": 80, "close": 40, "damp": 5]),
+        (39, 5, ["ring": 1, "edge": 7, "clang": 60, "buzz": 15, "reso": 8]),
+    ]
+
     // MARK: - Rendering and comparing
 
-    /// Renders `score` in keyboard mode at 96 kHz, in blocks of 128 frames, each block's hits
-    /// given with `brumle_midi` before it is processed. A hit is a note-on and a choke-only hit
-    /// a note-off.
-    func engineRender(_ score: Score, set: (OpaquePointer) -> Void, keyUpDamp: Bool) -> (left: [Float], right: [Float]) {
+    /// Renders `score` in `mode` at 96 kHz, in blocks of 128 frames, each block's hits given with
+    /// `brumle_midi` before it is processed. A hit is a note-on of `noteOf(hit)` and a choke-only
+    /// hit a note-off.
+    func engineRender(_ score: Score, mode: Int32 = Int32(BRUMLE_MODE_KEYBOARD), noteOf: (ScoreHit) -> UInt8 = { $0.note },
+                      set: (OpaquePointer) -> Void, keyUpDamp: Bool) -> (left: [Float], right: [Float]) {
         let engine = brumle_create()!
         defer { brumle_destroy(engine) }
         brumle_prepare(engine, PrototypeScores.sampleRate)
         brumle_reset(engine)
-        brumle_set_mode(engine, Int32(BRUMLE_MODE_KEYBOARD))
+        brumle_set_mode(engine, mode)
         set(engine)
         let keyboard = Int32(BRUMLE_KEYBOARD_SET)
         brumle_set_plain(engine, keyboard, Int32(Parameters.named("volume")!.index), -12)   // keeps the peaks under 0.6
@@ -150,9 +181,9 @@ struct PrototypeEquivalenceTests {
             let count = min(Self.frames, score.frames - start)
             while next < score.hits.count && score.hits[next].frame < start + count {
                 let hit = score.hits[next]
-                let offset = Int32(hit.frame - start)
-                if hit.chokeOnly { brumle_midi(engine, 0x80, Int32(hit.note), 0, offset) }
-                else { brumle_midi(engine, 0x90, Int32(hit.note), Int32(hit.velocity), offset) }
+                let offset = Int32(hit.frame - start), note = Int32(noteOf(hit))
+                if hit.chokeOnly { brumle_midi(engine, 0x80, note, 0, offset) }
+                else { brumle_midi(engine, 0x90, note, Int32(hit.velocity), offset) }
                 next += 1
             }
             left.withUnsafeMutableBufferPointer { l in
@@ -192,5 +223,33 @@ struct PrototypeEquivalenceTests {
         let m = matches(out.left, ref)
         #expect(m.residualDb < -60, "\(s.name): residual \(m.residualDb) dB")
         #expect(abs(m.scale - Self.expectedScale) / Self.expectedScale < 1e-3)   // one output scale for all
+    }
+
+    // The engine's pads 1-4 hold the kit's sounds at the prototype's pitches, each with Volume
+    // -12 dB as the keyboard scores have it; the prototype's pitches are distinct, so its choke and
+    // alternation per pitch are the engine's per pad with Group Off.
+    @Test("Pad mode plays the prototype's overlapping kit")
+    func overlappingKit() {
+        let pads = Self.kitPads
+        let padOf = Dictionary(uniqueKeysWithValues: pads.enumerated().map { ($0.element.pitch, $0.offset) })
+        let ref = PrototypeScores.referenceRender(Self.overlappingKit,
+                                                  params: pads.map { PrototypeScores.referenceParams($0.reference) }) { padOf[$0.note]! }
+        let out = engineRender(Self.overlappingKit, mode: Int32(BRUMLE_MODE_PADS),
+                               noteOf: { UInt8(BRUMLE_FIRST_PAD_NOTE + padOf[$0.note]!) },
+                               set: { engine in
+                                   for (pad, p) in pads.enumerated() {
+                                       let set = Int32(pad + 1)
+                                       brumle_set_program(engine, set, p.program)
+                                       brumle_set_plain(engine, set, Int32(Parameters.named("volume")!.index), -12)
+                                       brumle_set_pad_note(engine, Int32(pad), Int32(p.pitch))
+                                       brumle_set_pad_group(engine, Int32(pad), 0)
+                                   }
+                               }, keyUpDamp: false)
+        #expect(out.left == out.right)
+        let peak = out.left.map(abs).max() ?? 0
+        #expect(peak < 0.6, "peak \(peak)")
+        let m = matches(out.left, ref)
+        #expect(m.residualDb < -60, "residual \(m.residualDb) dB")
+        #expect(abs(m.scale - Self.expectedScale) / Self.expectedScale < 1e-3, "scale \(m.scale)")
     }
 }

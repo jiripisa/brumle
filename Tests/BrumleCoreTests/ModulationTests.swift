@@ -7,70 +7,23 @@ import BrumleDSP
 /// What moves the knobs while the instrument plays: the velocity's amounts, the two LFOs, the
 /// knobs themselves turned while a key rings, and the wheels.
 @Suite("Modulation")
-struct ModulationTests {
+struct ModulationTests: EngineHarness {
 
-    static let rate = 96_000.0
-    static let keyboard = Int32(BRUMLE_KEYBOARD_SET)
-
-    private static func index(_ identifier: String) -> Int32 {
-        guard let parameter = Parameters.named(identifier) else { preconditionFailure("unknown knob \(identifier)") }
-        return Int32(parameter.index)
+    /// A fresh engine with `plain` and then `knobs` in the keyboard set: every render here starts
+    /// from Out and no randomness unless the test says otherwise.
+    private func plainEngine(_ knobs: [String: Float] = [:]) -> OpaquePointer {
+        makeEngine(Self.plain.merging(knobs) { $1 })
     }
-
-    /// Out, no randomness: every render here starts from these unless the test says otherwise.
-    private static let plain: [String: Float] = ["stroke": 0, "vary": 0, "air": 0]
-
-    /// A fresh engine at 96 kHz in keyboard mode, with `plain` and then `knobs` (plain values) in
-    /// the keyboard set.
-    private func makeEngine(_ knobs: [String: Float] = [:]) -> OpaquePointer {
-        let engine = brumle_create()!
-        brumle_prepare(engine, Self.rate)
-        brumle_reset(engine)
-        brumle_set_mode(engine, Int32(BRUMLE_MODE_KEYBOARD))
-        for (key, value) in Self.plain.merging(knobs, uniquingKeysWith: { $1 }) {
-            brumle_set_plain(engine, Self.keyboard, Self.index(key), value)
-        }
-        return engine
-    }
-
-    private static func frames(_ seconds: Double) -> Int { Int((seconds * rate).rounded()) }
-
-    /// Renders `frames` of the left channel in blocks of 128 frames.
-    private func render(_ engine: OpaquePointer, frames: Int) -> [Float] {
-        var out = [Float](repeating: 0, count: frames)
-        var start = 0
-        out.withUnsafeMutableBufferPointer { buffer in
-            while start < frames {
-                let count = min(128, frames - start)
-                brumle_process(engine, buffer.baseAddress! + start, nil, Int32(count))
-                start += count
-            }
-        }
-        return out
-    }
-
-    private func render(_ engine: OpaquePointer, seconds: Double) -> [Float] { render(engine, frames: Self.frames(seconds)) }
 
     /// One hit of C2 at `velocity` on a fresh engine with `knobs`; `before` runs just before the
     /// note-on (for MIDI that sets the wheels).
     private func hit(_ knobs: [String: Float] = [:], velocity: Int32 = 110, seconds: Double = 1.5,
                      before: (OpaquePointer) -> Void = { _ in }) -> [Float] {
-        let engine = makeEngine(knobs)
+        let engine = plainEngine(knobs)
         defer { brumle_destroy(engine) }
         before(engine)
         brumle_midi(engine, 0x90, 36, velocity, 0)
         return render(engine, seconds: seconds)
-    }
-
-    private func rms<C: Collection>(_ x: C) -> Double where C.Element == Float {
-        (x.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(max(x.count, 1))).squareRoot()
-    }
-
-    /// dB of (a - b) re b.
-    private func residualDb<A: Collection, B: Collection>(_ a: A, _ b: B) -> Double where A.Element == Float, B.Element == Float {
-        var difference = 0.0, signal = 0.0
-        for (x, y) in zip(a, b) { difference += Double(x - y) * Double(x - y); signal += Double(y) * Double(y) }
-        return 10 * log10(difference / signal)
     }
 
     /// The magnitude-weighted mean frequency of `x`, in Hz: Hann-windowed frames of 8192 samples.
@@ -144,7 +97,7 @@ struct ModulationTests {
     /// silent again (exactly 0) before the second hit, so that nothing of the first is left in it.
     /// LFO 1 moves the Vowel (a sine), LFO 2 the Close (Steps, which draws random levels).
     private func twoHits(start: Float, gap: Double) -> (first: ArraySlice<Float>, second: ArraySlice<Float>) {
-        let engine = makeEngine(["ring": 0.3, "lfostart": start,
+        let engine = plainEngine(["ring": 0.3, "lfostart": start,
                                  "lfo1rate": 3, "lfo1vowel": 40,
                                  "lfo2rate": 5, "lfo2shape": 5, "lfo2close": 50])
         defer { brumle_destroy(engine) }
@@ -191,7 +144,7 @@ struct ModulationTests {
     @Test("A keyboard voice follows the knobs while it rings")
     func liveKnobs() {
         func play(closeAtHalf: Bool) -> [Float] {
-            let engine = makeEngine(["sweep": 0, "throat": -30, "buzz": 0])
+            let engine = plainEngine(["sweep": 0, "throat": -30, "buzz": 0])
             defer { brumle_destroy(engine) }
             brumle_midi(engine, 0x90, 36, 110, 0)
             var out = render(engine, seconds: 0.5)
@@ -225,5 +178,16 @@ struct ModulationTests {
         let pressed = hit(["breath": 0]) { brumle_midi($0, 0xD0, 127, 0, 0) }
         #expect(pressed == hit(["breath": 100]))
         #expect(pressed != hit(["breath": 0]))
+    }
+
+    @Test("Reset All Controllers puts the wheels back at rest")
+    func resetAllControllers() {
+        let reset = hit { engine in
+            brumle_midi(engine, 0xB0, 1, 127, 0)
+            brumle_midi(engine, 0xD0, 127, 0, 0)
+            brumle_midi(engine, 0xE0, 0x7F, 0x7F, 0)
+            brumle_midi(engine, 0xB0, 121, 0, 0)
+        }
+        #expect(reset == hit())
     }
 }
