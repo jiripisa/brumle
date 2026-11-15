@@ -105,6 +105,12 @@ struct PrototypeEquivalenceTests {
         phrase("10_vary_A_0", sub: 4, ["vary": 0]),
         phrase("10_vary_C_50", sub: 4, ["vary": 50]),
         NamedScore(name: "11_velocity_A_brightness_and_breath", score: velocityRamp),
+        // The prototype's "level only" velocity is Vel Sens 0 with VEL>Volume 100 %.
+        NamedScore(name: "11_velocity_B_level_only", score: velocityRamp, overrides: ["levelOnly": 1],
+                   apply: { engine in
+                       brumle_set_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(Parameters.named("velsens")!.index), 0)
+                       brumle_set_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(Parameters.named("velvolume")!.index), 100)
+                   }),
         NamedScore(name: "12_range_C2_G2_D3_G3_C4", score: range),
         program("13_program_Molln", 1, note: 36,
                 ["ring": 7.5, "sweep": 0, "vowel": 1050, "reso": 25, "open": 0, "offset": 0]),

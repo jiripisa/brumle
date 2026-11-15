@@ -6,8 +6,11 @@
 //
 //   voices -> sum (L, R) -> DC blocker -> kLevel -> limiter -> out
 //
-// Still to come in this phase: modulation (LFOs, VEL amounts, wheels), pad mode, voice stealing
-// and oversampling below 88.2 kHz. Until then the voices run at the host rate.
+// What a voice plays is its view (viewFor): the knob set, moved by the voice's two LFOs, the
+// hit's velocity and, for a keyboard voice, the wheels.
+//
+// Still to come in this phase: pad mode, voice stealing and oversampling below 88.2 kHz. Until
+// then the voices run at the host rate.
 
 // A product and a sum stay two roundings. An optimised build would otherwise fuse them into one
 // multiply-add where a debug build does not, and the two builds would render different last
@@ -20,7 +23,9 @@
 #include "Params.h"
 #include "Voice.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <random>
@@ -30,6 +35,38 @@ using namespace brumle;
 namespace {
 
 bool validSet(int set) { return set >= 0 && set < BRUMLE_NUM_SETS; }
+
+static_assert(kLfo2Rate == kLfo1Rate + 2 && kLfo2Shape == kLfo1Shape + 2, "an LFO's knobs are two apart");
+
+// For every knob, the amounts that move it (-1 where a source cannot), and the knobs that
+// anything can move: an LFO, the velocity or a wheel.
+struct Moves
+{
+    int lfo[kNumKnobs][kNumLfos];
+    int vel[kNumKnobs];
+    int knobs[kNumKnobs];
+    int numKnobs;
+};
+
+constexpr Moves makeMoves()
+{
+    Moves m{};
+    for (int i = 0; i < kNumKnobs; ++i)
+    {
+        bool moves = i == kClose || i == kBreath;      // the mod wheel and the aftertouch
+        for (int k = 0; k < kNumLfos; ++k) { m.lfo[i][k] = amountOf(k, i); moves = moves || m.lfo[i][k] >= 0; }
+        m.vel[i] = velAmountOf(i);
+        moves = moves || m.vel[i] >= 0;
+        if (moves) m.knobs[m.numKnobs++] = i;
+    }
+    return m;
+}
+
+constexpr Moves kMoves = makeMoves();
+
+// The seeds of the LFOs' generators: a voice's at every hit with LFO Start = Hit, the engine's
+// free-running ones at every reset.
+constexpr uint32_t kHitSeed = 0x9E3779B9u, kFreeSeed = 0x2F6E2B11u;
 bool validPad(int pad) { return pad >= 0 && pad < BRUMLE_NUM_PADS; }
 
 // Didgeridoo's tanh: a Padé approximant, exact enough for a limiter and cheap.
@@ -125,6 +162,9 @@ struct BrumleEngine
         rng_.seed(12345);
         for (int& d : lastDir_) d = -1;
         dcL_ = dcR_ = Dc{};
+        for (int k = 0; k < kNumLfos; ++k) freeLfo_[k].restart(kFreeSeed + (uint32_t)k);
+        freeTick_ = 0;
+        bend_ = modWheel_ = pressure_ = 0.0f;
         sounding_.store(0, std::memory_order_relaxed);
     }
 
@@ -162,10 +202,73 @@ private:
     // the limiter's 0.6.
     static constexpr float kLevel = 0.2f;
 
-    // The keyboard set as plain values, read once per block.
+    // The keyboard set, normalised and as plain values, read once per block.
     void readKeyboardSet()
     {
-        for (int i = 0; i < kNumParams; ++i) keyView_.v[i] = get(BRUMLE_KEYBOARD_SET, i);
+        for (int i = 0; i < kNumParams; ++i)
+        {
+            keyNorm_[i] = getNormalised(BRUMLE_KEYBOARD_SET, i);
+            keyView_.v[i] = param(i).toPlain(keyNorm_[i]);
+        }
+    }
+
+    // Where every knob of `v` stands now. A knob a source moves stands at
+    //   knob + sum of (LFO amount * LFO value) - VEL amount * (1 - velocity)  (+ a wheel),
+    // in parts of its travel and no further than its ends; Volume's VEL amount is a gain
+    // instead, and the pitch bend multiplies the Vowel. The one place that adds modulation:
+    // with every amount and wheel at rest, the view is the knob set itself, value for value.
+    void viewFor(const Voice& v, KnobView& out) const
+    {
+        const bool keyboard = v.followsKeyboard;
+        const float* set = keyboard ? keyNorm_ : v.setAtHit;
+        if (keyboard) std::copy(keyView_.v, keyView_.v + kNumParams, out.v);
+        else for (int i = 0; i < kNumParams; ++i) out.v[i] = param(i).toPlain(set[i]);
+
+        float lfoValue[kNumLfos];
+        for (int k = 0; k < kNumLfos; ++k)
+            lfoValue[k] = v.lfo[k].value(std::clamp((int)std::lround(out.v[kLfo1Shape + 2 * k]), 0, (int)kNumLfoShapes - 1));
+        const float soft = 1.0f - v.vel;
+
+        for (int n = 0; n < kMoves.numKnobs; ++n)
+        {
+            const int i = kMoves.knobs[n];
+            float position = set[i];
+            bool moved = false;
+            for (int k = 0; k < kNumLfos; ++k)
+            {
+                const int slot = kMoves.lfo[i][k];
+                const float amount = slot >= 0 ? out.v[slot] / 100.0f : 0.0f;
+                if (amount != 0.0f) { position += amount * lfoValue[k]; moved = true; }
+            }
+            const float velAmount = kMoves.vel[i] >= 0 && i != kVolume ? out.v[kMoves.vel[i]] / 100.0f : 0.0f;
+            if (velAmount != 0.0f) { position -= velAmount * soft; moved = true; }
+            if (keyboard)
+            {
+                if (i == kClose && modWheel_ != 0.0f) { position += modWheel_; moved = true; }
+                if (i == kBreath && pressure_ != 0.0f) { position += 0.5f * pressure_; moved = true; }
+            }
+            if (moved) out.v[i] = param(i).toPlain(std::clamp(position, 0.0f, 1.0f));
+        }
+
+        out.velocityGain = std::max(0.0f, 1.0f - out.v[velAmountOf(kVolume)] / 100.0f * soft);
+        if (keyboard && bend_ != 0.0f) out.v[kVowel] *= std::pow(2.0f, bend_ * out.v[kBendVowel] / 12.0f);
+    }
+
+    // A hit's LFOs: restarted (Hit), or where the engine's free-running ones stand (Free).
+    void startLfos(Voice& v, int start) const
+    {
+        for (int k = 0; k < kNumLfos; ++k)
+        {
+            if (start == kLfoStartFree) v.lfo[k] = freeLfo_[k];
+            else v.lfo[k].restart(kHitSeed + (uint32_t)k);
+        }
+    }
+
+    // The free-running LFOs go round at the keyboard set's rates, one control tick at a time.
+    void turnFreeLfos()
+    {
+        for (int k = 0; k < kNumLfos; ++k)
+            freeLfo_[k].advance(keyView_.v[kLfo1Rate + 2 * k] * 16.0f / (float)internalRate_);
     }
 
     void handleMidi(const MidiEvent& ev)
@@ -174,6 +277,13 @@ private:
         if (ev.isNoteOn()) { if (keyboard) noteOn(ev.data1, ev.data2 / 127.0f); }
         else if (ev.isNoteOff()) { if (keyboard) noteOff(ev.data1); }
         else if (ev.isAllNotesOff()) { for (Voice& v : voices_) if (v.active) v.choke(v.knob(kDamp)); }
+        else if (ev.isController() && ev.data1 == 1) modWheel_ = ev.data2 / 127.0f;
+        else if (ev.isAftertouch()) pressure_ = ev.data1 / 127.0f;
+        else if (ev.isPitchBend())          // -1 at the bottom, +1 at the top
+        {
+            const int bend = ev.pitchBend();
+            bend_ = (float)bend / (bend >= 0 ? 8191.0f : 8192.0f);
+        }
     }
 
     void noteOn(int note, float velocity)
@@ -187,8 +297,11 @@ private:
         const int stroke = (int)std::lround(keyView_.v[kStroke]);
         if (stroke == kStrokeIn) dir = -1.0f;
         else if (stroke == kStrokeAlternate) { lastDir_[note] = -lastDir_[note]; dir = (float)lastDir_[note]; }
-        slot->start(note, velocity, keyView_, dir, rng_, internalRate_);
-        slot->followsKeyboard = true;
+        // What is taken at the hit is taken from the hit's view: its velocity moves Ring and Tune.
+        slot->take(note, velocity, true);
+        startLfos(*slot, (int)std::lround(keyView_.v[kLfoStart]));
+        viewFor(*slot, slot->view);
+        slot->start(dir, rng_, internalRate_);
         lastNote_.store(note, std::memory_order_relaxed);
     }
 
@@ -224,11 +337,12 @@ private:
     {
         for (int i = from; i < to; ++i)
         {
+            if (freeTick_-- <= 0) { turnFreeLfos(); freeTick_ = 15; }
             float l = 0.0f, r = 0.0f;
             for (Voice& v : voices_)
             {
                 if (!v.active) continue;
-                if (v.followsKeyboard && v.controlDue()) v.view = keyView_;   // a keyboard voice follows the knobs
+                if (v.controlDue()) { viewFor(v, v.view); v.turnLfos(); }   // the knobs as this tick sees them
                 const StereoSample s = v.process();
                 l += s.l; r += s.r;
             }
@@ -255,7 +369,11 @@ private:
     // --- audio thread ----------------------------------------------------------------------
     double hostRate_ = 44100.0, internalRate_ = 44100.0;
     float  dcCoeff_ = 0.9995f;
+    float  keyNorm_[kNumParams] = {};
     KnobView keyView_{};
+    Lfo    freeLfo_[kNumLfos];
+    int    freeTick_ = 0;
+    float  bend_ = 0.0f, modWheel_ = 0.0f, pressure_ = 0.0f;   // -1..1, 0..1, 0..1
     Voice  voices_[kNumSlots];
     std::mt19937 rng_{12345};
     int    lastDir_[128];

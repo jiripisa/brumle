@@ -3,18 +3,22 @@
 //
 // What differs from the prototype:
 //   * the rate is the engine's internal rate, not a fixed 96 kHz;
-//   * the knobs come from a KnobView (plain values, percent knobs divided by 100 here);
+//   * the knobs come from a KnobView (plain values, percent knobs divided by 100 here), which
+//     the engine computes for the voice (Engine::viewFor): the knob set, moved by the voice's
+//     LFOs, the hit's velocity and the wheels;
 //   * Ring, Vel Sens, Stroke, Vary, Tune and Octave are taken at the hit; every other knob is
 //     read again from the view at each control tick, so a voice can follow the knobs while it
 //     rings. Vary's random draws are kept as factors and applied to the knob each time;
 //   * the Puff is scaled by Vel Sens, as the swing is: puff * (1 - velsens * (1 - velocity));
-//   * the output gain is Volume (times VEL>Volume's gain), and Pan splits it into two channels.
+//   * the output gain is Volume times VEL>Volume's gain, and Pan splits it into two channels;
+//   * each voice owns two LFOs, which step at its control tick.
 //
 // Each expression keeps the prototype's order of operations, so that fixed knobs give the
 // prototype's numbers.
 
 #pragma once
 
+#include "Lfo.h"
 #include "Params.h"
 
 #include <algorithm>
@@ -25,8 +29,13 @@ namespace brumle {
 
 constexpr double kPi = 3.14159265358979323846;
 
-// The plain values a voice reads, in table order.
-struct KnobView { float v[kNumParams]; };
+// The plain values a voice reads, in table order, and VEL>Volume's linear gain: Volume's VEL
+// amount scales the level instead of moving the knob.
+struct KnobView
+{
+    float v[kNumParams];
+    float velocityGain = 1.0f;
+};
 
 struct StereoSample { float l, r; };
 
@@ -59,15 +68,19 @@ constexpr float kHarmonicRef = 0.35f;
 struct Voice
 {
     bool active = false, choking = false;
-    bool followsKeyboard = false;   // a keyboard voice: its view is refreshed from the keyboard set
+    bool followsKeyboard = false;   // a keyboard voice: it plays the keyboard set as it is now
     int note = 0;
     KnobView view{};
+    // The knob set (normalised) as it stood at the hit, for a voice that does not follow the
+    // keyboard (a pad's, Task 5): what its view is computed from.
+    float setAtHit[kNumParams] = {};
     double rate = 96000.0, phase = 0, inc = 0, t = 0;
 
     // Taken at the hit.
     float swing = 1, tau = 1, dir = 1, vel = 1, velSens = 0.7f;
     float offsetAdd = 0, vowelFactor = 1, sweepFactor = 1;   // Vary's draws
-    float velVolumeGain = 1;                                 // VEL>Volume (Task 4); 1 until then
+
+    Lfo lfo[kNumLfos];
 
     // Read from the view at each control tick.
     float offset = 0, vowelStart = 800, sweepTime = 0.16f, puffAmt = 0;
@@ -87,20 +100,26 @@ struct Voice
     // True when the next sample starts a control tick: the moment to refresh the view.
     bool controlDue() const { return ctl <= 0; }
 
-    void start(int n, float velocity, const KnobView& knobs, float direction, std::mt19937& rng, double internalRate)
+    // A hit, in two steps. `take` forgets the last hit and takes the note and the velocity; the
+    // engine then sets the LFOs and computes the view the hit sees, and `start` plucks the reed
+    // with it: what is taken at the hit is taken from that view.
+    void take(int n, float velocity, bool keyboard)
     {
-        const KnobView taken = knobs;     // `knobs` may be this voice's own view
         *this = Voice();
-        view = taken;
+        note = n; vel = velocity; followsKeyboard = keyboard;
+    }
+
+    void start(float direction, std::mt19937& rng, double internalRate)
+    {
         rate = internalRate;
-        active = true; note = n; vel = velocity; dir = direction;
-        const double pitch = (double)n + 12.0 * (double)knob(kOctave) + (double)knob(kTune) / 100.0;
+        active = true; dir = direction;
+        const double pitch = (double)note + 12.0 * (double)knob(kOctave) + (double)knob(kTune) / 100.0;
         const double f0 = 440.0 * std::pow(2.0, (pitch - 69) / 12.0);
         inc = 2 * kPi * f0 / rate;
         std::uniform_real_distribution<float> u(-1.0f, 1.0f);
         const float vy = knob(kVary) / 100.0f;
         velSens = knob(kVelSens) / 100.0f;
-        const float v = 1.0f - velSens * (1.0f - velocity);
+        const float v = 1.0f - velSens * (1.0f - vel);
         swing = v * (1.0f + 0.15f * vy * u(rng));
         tau = knob(kRing) / 6.91f;
         offsetAdd = 0.3f * vy * u(rng);
@@ -157,10 +176,17 @@ struct Voice
         puffAmt = knob(kPuff) / 100.0f * (1.0f - velSens * (1.0f - vel));
         pufftime = knob(kPuffTime) * 0.001f;
         airAmt = knob(kAir) / 100.0f * 0.08f;
-        outGain = dbToGain(knob(kVolume)) * velVolumeGain;
+        outGain = dbToGain(knob(kVolume)) * view.velocityGain;
         const float pan = knob(kPan) / 100.0f;
         panL = std::min(1.0f, 1.0f - pan);
         panR = std::min(1.0f, 1.0f + pan);
+    }
+
+    // The LFOs one control tick on, each at its rate as the view has it now.
+    void turnLfos()
+    {
+        for (int k = 0; k < kNumLfos; ++k)
+            lfo[k].advance(knob(kLfo1Rate + 2 * k) * 16.0f / (float)rate);
     }
 
     void updateFilters()

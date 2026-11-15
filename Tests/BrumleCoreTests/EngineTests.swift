@@ -121,6 +121,33 @@ struct EngineTests {
         }
     }
 
+    /// The bus's DC blocker, as the engine computes it at 96 kHz.
+    private static let dcCoefficient = Float(1 - 48 / rate)
+
+    // What is left once the voices stop is the DC blocker's memory of the reed's DC (Offset
+    // makes the bursts lopsided): it falls by the blocker's coefficient every sample, -4.2 dB in
+    // 10 ms, and is under -120 dBFS ~110 ms after the controller. So the test asks for no voice
+    // in the bus after 50 ms, which is exact, and for -120 dBFS after 150 ms.
+    @Test("After All Sound Off or All Notes Off the voices are silent within 50 ms")
+    func allOffFallsSilent() {
+        for controller: Int32 in [120, 123] {
+            let engine = makeEngine(Self.dry)
+            defer { brumle_destroy(engine) }
+            brumle_midi(engine, 0x90, 36, 110, 0)
+            brumle_midi(engine, 0x90, 43, 110, 0)
+            #expect((render(engine, seconds: 0.2).map(abs).max() ?? 0) > 0.05)
+            brumle_midi(engine, 0xB0, controller, 0, 0)
+            _ = render(engine, seconds: 0.05)
+            let tail = render(engine, seconds: 0.1)
+            let onlyTheBlocker = zip(tail.dropFirst(), tail).allSatisfy { next, previous in
+                previous == 0 ? next == 0 : abs(next / previous - Self.dcCoefficient) < 1e-5
+            }
+            #expect(onlyTheBlocker, "CC \(controller): a voice is still in the bus 50 ms after it")
+            let peak = render(engine, seconds: 0.5).map(abs).max() ?? 0
+            #expect(peak == 0 || 20 * log10(peak) < -120, "CC \(controller): \(20 * log10(peak)) dBFS after 150 ms")
+        }
+    }
+
     @Test("Silence is exact 20 s after the last hit")
     func silenceIsExact() {
         let engine = makeEngine()
