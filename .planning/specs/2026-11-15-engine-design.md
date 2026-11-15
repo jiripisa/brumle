@@ -133,7 +133,6 @@ report's §"Parameters" **[ear for those exercised by the renders; call for the 
 | Reed | `buzz` | Buzz | 0–100 % | 40 % |
 | Reed | `clang` | Clang | 0–100 % | 10 % |
 | Stroke | `velsens` | Vel Sens | 0–100 % | 70 % |
-| Stroke | `vellevel` | Vel>Level | 0–100 % | 0 % |
 | Stroke | `stroke` | Stroke | Out / In / Alternate | Alternate |
 | Stroke | `damp` | Damp | 2–80 ms | 10 ms |
 | Stroke | `keyup` | Key Up | Ring / Damp | Ring |
@@ -163,14 +162,41 @@ report's §"Parameters" **[ear for those exercised by the renders; call for the 
   (`didge_lfo_amount`). Targets: Vowel, Close, Breath, Open, Reso, Throat, Buzz, Body, Volume,
   Edge, Offset **[call, from the report]**. Each voice carries its own LFO phase. With
   LFO Start = Hit, a hit repeats exactly, which the pad rule needs.
-- **Velocity [ear: both renders 11_A and 11_B approved, so both behaviours stay].**
-  - Vel Sens scales the swing, as `swing = 1 - VelSens * (1 - velocity)`. It also scales the
-    Puff, as `puff * (1 - VelSens * (1 - velocity))`. At the default 70 % this equals the
-    prototype's `0.3 + 0.7 * velocity`.
-  - Vel>Level scales the output level, as `1 - VelLevel * (1 - velocity)`.
-  - Render 11_B ("level only") is Vel Sens 0 % with Vel>Level 100 %. The prototype's
-    `levelOnlyVelocity` flag maps onto these two knobs, and every render stays reachable
-    **[call]**.
+- **Velocity is a modulation source [author].** Velocity must be mappable to other
+  parameters, not only to level, and the targets were left to design.
+  - **Vel Sens is the physical stroke.** It scales the reed's swing, as
+    `swing = 1 - VelSens * (1 - velocity)`, and with it the Puff, as
+    `puff * (1 - VelSens * (1 - velocity))`. At the default 70 % this equals the prototype's
+    `0.3 + 0.7 * velocity`. A soft stroke is therefore darker, quieter and less breathy, as the
+    research describes.
+  - **VEL amounts.** Velocity also has an amount on each target knob. The amounts work like an
+    LFO's (Didgeridoo's `amountOf`) and are set on the knobs with a **VEL** button in the
+    header, beside LFO 1 and LFO 2. Velocity is fixed per hit.
+  - **The rule:** the knob is where a full-velocity hit stands, and a softer hit moves it by
+    `amount * (1 - velocity)` of the knob's travel. The amount runs −100…+100 %, default 0, so
+    the approved sound is unchanged. A positive amount means "harder hit, higher value".
+    Velocity offsets and LFO offsets add **[call]**.
+  - **The exception is Volume.** Its VEL amount scales the linear gain, as
+    `1 - amount * (1 - velocity)`, the classic velocity-to-level. Render 11_B ("level only") is
+    then Vel Sens 0 % with VEL>Volume 100 % **[call]**.
+  - **Targets [call]:** every continuous knob where a harder hit plausibly changes the sound.
+    - Ring: a harder hit rings longer; this is the "release".
+    - Damp.
+    - Edge, Offset, Body, Buzz and Clang: brightness, parity, fundamental and metal.
+    - Vary.
+    - Vowel, Sweep and Sweep Time: a harder hit starts higher, sweeps further or faster.
+    - Reso: the mouth resonance's sharpness.
+    - Throat, Throat Tune, Open and Close.
+    - Breath, Puff, Puff Time and Air.
+    - Volume and Pan.
+    - Tune: a harder hit is slightly sharp, as a real reed under force.
+    - LFO 1 Rate and LFO 2 Rate.
+  - **Not targets:** switches (Stroke, Key Up, Curve, LFO Start, LFO shapes), Octave,
+    Bend>Vowel, Vel Sens itself and the LFO amounts.
+  - The VEL amounts come after the LFO amounts in the table. Their identifiers are
+    `vel<knob>` (e.g. `velring`) and their names `VEL>Ring`.
+  - VEL amounts are part of the knob set, so a pad freezes them too. A pad hit's velocity then
+    shapes it exactly as a key press would.
 - `pan` makes the output stereo. Didgeridoo is mono **[call: a pad instrument benefits from
   placing pads; default centre keeps the prototype's sound]**.
 - Not yet heard by the author: Curve Step, Key Up = Damp, Close, the LFOs, Pan and the wheels.
@@ -276,7 +302,8 @@ Changes against Didgeridoo, from the report's §"What … does not fit":
    builder]**.
 3. **AU parameters = the keyboard set only.** Pad sets, pad notes, the mode and the kit go
    into the AU's saved state (ClassInfo) as a block. Host automation is therefore defined only
-   for keyboard mode **[call: 17 × ~55 ≈ 900 AU parameters would be unusable]**.
+   for keyboard mode **[call]**. One set is about 33 knobs, 22 LFO amounts and 27 VEL
+   amounts: about 80 parameters, and about 1,400 for 17 sets, which would be unusable.
 4. **No amplitude envelope.** The reed's swing is the envelope. There is no
    Attack/Release/Glide and no Rhythm section.
 5. **Events, not a drone:** every hit restarts its gesture and, with LFO Start = Hit, its
@@ -314,10 +341,27 @@ What the UI must offer:
 The same panel serves the app and the plug-in, as Didgeridoo's `BrumleUI`/`InstrumentPanel`
 pattern does.
 
-**The look is the author's to decide.** It is designed in its own short brainstorm, with
-mockups, before the panel is built. Didgeridoo's raster skin (Codex artwork and a custom
-`KnobView`) is not carried over: it works against Liquid Glass's system materials. **[call;
-look: author]**
+**The look [author].** The motif is the jaw harp and "ethno" folk craft, combined with macOS
+26 Liquid Glass. Codex proposes several concepts as mockups (keyboard mode and pad mode each).
+The author picks one, and Codex then generates its artwork as separate assets: background,
+logo, knob caps and ornament bands. The panel is built as that skin: raster artwork for the
+crafted parts, native SwiftUI / Liquid Glass for menus, segmented controls, buttons and the
+pads where the concept puts glass. This follows Didgeridoo's precedent of Codex-made art in
+`Resources/Art/`. The VEL button sits in the header beside LFO 1 and LFO 2.
+
+**Chosen: concept 2, "Polar Khomus" [author, 2026-11-15].**
+- The look: a Sakha khomus in silver and bone over dark leather and fur, with northern
+  diamond ornament. Deep blue-black glass panels carry aurora-cyan selection and modulation
+  accents.
+- The palette: midnight `#111C29`, slate `#24374A`, icy silver `#CBDCE4`, bone `#E9DEC4` and
+  aurora cyan `#67D6D3`. The typography is an angular serif wordmark and headings, with SF Pro
+  for the controls.
+- Raster art: the leather and bone background, the silver khomus and logo emblem, the engraved
+  diamond strips and the brushed-metal knob caps. Everything else is native.
+- The mockups, Codex's notes on all four concepts and the brief are in
+  `.planning/design/concepts/`: `concept-2-keyboard.png`, `concept-2-pads.png`, `concepts.md`
+  and `brief.md`. Only the chosen concept's images are kept.
+- The mockups' Curve labels "1–4" are placeholders: the real curve names come from the engine.
 
 ## 11. Proposed phases [call]
 
@@ -329,7 +373,8 @@ Each phase has its own PLAN.md, branch and merge (development_workflow.md §4).
    - `BrumleDSP` with the voice pool, 17 sets, modes, programs, LFOs and oversampling.
    - The `BrumleCore` wrapper.
    - Tests: the prototype equivalence (§8), regression scores and TSan.
-2. **03-panel-design:** the Liquid Glass panel's look decided with the author (design only).
+2. **03-panel-design:** Codex generates the artwork assets of the chosen concept 2 (design
+   and assets only, no code).
 3. **04-app-and-audiounit:**
    - the app (audio out, MIDI in, settings, on-screen keyboard and pads);
    - the AUv2 with its view;
