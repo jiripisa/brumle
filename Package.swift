@@ -18,8 +18,14 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.4"),
     ],
     targets: [
+        // The sound engine: C++ with a C interface (include/BrumleDSP.h).
+        .target(
+            name: "BrumleDSP",
+            path: "Sources/BrumleDSP"
+        ),
         .target(
             name: "BrumleCore",
+            dependencies: ["BrumleDSP"],
             path: "Sources/BrumleCore"
         ),
         .executableTarget(
@@ -39,7 +45,7 @@ let package = Package(
         .target(name: "BrumleReference", path: "Tests/BrumleReference"),
         .testTarget(
             name: "BrumleCoreTests",
-            dependencies: ["BrumleCore", "BrumleReference"],
+            dependencies: ["BrumleCore", "BrumleDSP", "BrumleReference"],
             path: "Tests/BrumleCoreTests"
         ),
     ],
