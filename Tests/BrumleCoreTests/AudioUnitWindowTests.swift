@@ -368,6 +368,74 @@ struct AudioUnitWindowTests {
         #expect(brumle_sounding_voices(engine) == 0)
     }
 
+    // MARK: A unit that is gone
+
+    /// A unit not owned by an `Instrument`, so that the test can dispose of it while the window's
+    /// model lives on, as a host may.
+    private func disposableUnit() throws -> AudioUnit {
+        var made: AudioUnit?
+        try #require(AudioComponentInstanceNew(PlugIn.component, &made) == noErr)
+        let unit = try #require(made)
+        try #require(AudioUnitInitialize(unit) == noErr)
+        return unit
+    }
+
+    @Test("A window whose unit the host disposed of leaves the unit and its engine alone")
+    func unitGoneDetaches() throws {
+        let unit = try disposableUnit()
+        let model = try #require(AudioUnitModel(unit: unit))
+        let ring = try #require(Parameters.named("ring"))
+        model.setPadNote(60, pad: 1)                          // a notice for the host is waiting
+        let padRing = model.position(of: ring, in: .pad(2))
+        let keyboardRing = model.position(of: ring, in: .keyboard)
+        let group = model.padGroup(1)
+        #expect(!model.isDetached)
+
+        AudioComponentInstanceDispose(unit)
+        model.refresh()
+        #expect(model.isDetached)
+
+        // Everything the window can still do is dropped: nothing reaches the freed engine.
+        model.mode = .pads
+        model.setPosition(1, of: ring, in: .pad(2))
+        model.beginEditing(ring, in: .keyboard)
+        model.setPosition(0, of: ring, in: .keyboard)
+        model.endEditing(ring, in: .keyboard)
+        model.resetToDefault(ring, in: .pad(2))
+        model.loadProgram(3, into: .keyboard)
+        model.loadProgram(3, into: .pad(2))
+        model.setPadNote(70, pad: 1)
+        model.setPadGroup(9, pad: 1)
+        model.sendToPad(5)
+        model.hitPad(4, velocity: 100)
+        model.releasePad(4)
+        model.keyDown(50, velocity: 100)
+        model.keyUp(50)
+        model.selectedPad = 7
+        model.releaseHeld()
+        model.tellHostIfEdited()
+        model.refresh()
+
+        #expect(model.mode == .keyboard)
+        #expect(model.position(of: ring, in: .pad(2)) == padRing)
+        #expect(model.position(of: ring, in: .keyboard) == keyboardRing)
+        #expect(model.program(in: .keyboard) == 0)
+        #expect(model.padNote(1) == 60)
+        #expect(model.padGroup(1) == group)
+        #expect(model.selectedPad == 7)                       // the window's own, no engine behind it
+    }
+
+    @Test("The first touch after the unit is gone detaches too, not only the refresh")
+    func unitGoneBeforeAnyRefresh() throws {
+        let unit = try disposableUnit()
+        let model = try #require(AudioUnitModel(unit: unit))
+        AudioComponentInstanceDispose(unit)
+
+        model.keyDown(50, velocity: 100)
+        #expect(model.isDetached)
+        model.releaseHeld()
+    }
+
     // MARK: The window
 
     @Test("The window opens without the component's artwork, at the panel's width")

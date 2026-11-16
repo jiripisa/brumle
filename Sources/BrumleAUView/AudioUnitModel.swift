@@ -15,13 +15,20 @@ import Observation
 ///
 /// A host changes parameters and restores projects without telling a view, so the panel asks for
 /// the present state every 40 ms: see `refresh`.
+///
+/// The engine is borrowed from the unit. Before each use the model asks the unit for it again;
+/// once the unit no longer gives the same engine (the host disposed of it while the window was
+/// still shown), the model is detached: it never touches the unit or the engine again.
 @MainActor
 @Observable
 public final class AudioUnitModel: InstrumentModel {
 
     @ObservationIgnored private let unit: AudioUnit
-    /// The unit's engine, borrowed: the unit owns it and outlives its window.
+    /// The unit's engine, borrowed: the unit owns it. Used only while `isAttached`.
+    @ObservationIgnored private let engine: OpaquePointer
     @ObservationIgnored private let synth: Synth
+    /// True once the unit was found gone: nothing is asked of it or its engine any more.
+    @ObservationIgnored private(set) var isDetached = false
     /// When the host is to hear that the pads or the mode changed: half a second after the last
     /// such edit, so that a drag, which edits many times a second, is told once.
     @ObservationIgnored private var hostNotice = SaveDebounce()
@@ -48,7 +55,7 @@ public final class AudioUnitModel: InstrumentModel {
     public var mode: PlayMode {
         get { playMode }
         set {
-            guard newValue != playMode else { return }
+            guard newValue != playMode, isAttached else { return }
             synth.mode = newValue
             playMode = synth.mode
             edited()
@@ -57,7 +64,7 @@ public final class AudioUnitModel: InstrumentModel {
 
     /// The pad the knobs edit in pad mode. The window's own: a new window begins on pad 01.
     public var selectedPad = 0 {
-        didSet { if selectedPad != oldValue { mirror(.pad(selectedPad)) } }
+        didSet { if selectedPad != oldValue, isAttached { mirror(.pad(selectedPad)) } }
     }
 
     public var shownSet: SoundSet { playMode == .keyboard ? .keyboard : .pad(selectedPad) }
@@ -66,6 +73,7 @@ public final class AudioUnitModel: InstrumentModel {
     public init?(unit: AudioUnit) {
         guard let engine = Self.engine(of: unit) else { return nil }
         self.unit = unit
+        self.engine = engine
         let synth = Synth(borrowing: engine)
         self.synth = synth
         positions = Dictionary(uniqueKeysWithValues: Self.sets.map { set in
@@ -83,6 +91,7 @@ public final class AudioUnitModel: InstrumentModel {
     /// restored projects, and on the audio thread the pads hit (also from MIDI) and the last note.
     /// Tells the host of the window's pad edits once they have rested.
     public func refresh() {
+        guard isAttached else { return }
         let keyboard = Self.keyboardPositions(of: unit)
         if keyboard != positions[.keyboard] { positions[.keyboard] = keyboard }
         if case .pad = shownSet { mirror(shownSet) }          // a restored project changes the pads too
@@ -104,13 +113,13 @@ public final class AudioUnitModel: InstrumentModel {
     // MARK: Knobs and programs
 
     public func program(in set: SoundSet) -> Int {
-        programs[set] ?? synth.program(in: set)
+        programs[set] ?? 0          // a pad outside 0...15, as `Synth` reads it
     }
 
     /// Into the keyboard as the unit's factory preset, so that the host shows it; into a pad
     /// through the engine.
     public func loadProgram(_ index: Int, into set: SoundSet) {
-        guard Programs.names.indices.contains(index), positions[set] != nil else { return }
+        guard Programs.names.indices.contains(index), positions[set] != nil, isAttached else { return }
         if set == .keyboard {
             guard setPresentPreset(number: index, name: Programs.names[index]) else { return }
             everyParameterMoved()
@@ -126,7 +135,7 @@ public final class AudioUnitModel: InstrumentModel {
     }
 
     public func setPosition(_ position: Double, of parameter: Parameter, in set: SoundSet) {
-        guard positions[set] != nil else { return }
+        guard positions[set] != nil, isAttached else { return }
         let plain = parameter.plain(Float(min(max(position, 0), 1)))      // integers and choices on their step
         if set == .keyboard {
             var address = address(of: parameter)
@@ -150,11 +159,11 @@ public final class AudioUnitModel: InstrumentModel {
     /// A host records automation between the two. The pads' knobs are no parameters of the unit:
     /// there is nothing to record.
     public func beginEditing(_ parameter: Parameter, in set: SoundSet) {
-        if set == .keyboard { notify(.beginParameterChangeGesture, parameter) }
+        if set == .keyboard, isAttached { notify(.beginParameterChangeGesture, parameter) }
     }
 
     public func endEditing(_ parameter: Parameter, in set: SoundSet) {
-        if set == .keyboard { notify(.endParameterChangeGesture, parameter) }
+        if set == .keyboard, isAttached { notify(.endParameterChangeGesture, parameter) }
     }
 
     // MARK: Pads
@@ -164,7 +173,7 @@ public final class AudioUnitModel: InstrumentModel {
     }
 
     public func setPadNote(_ note: Int, pad: Int) {
-        guard padNotes.indices.contains(pad) else { return }
+        guard padNotes.indices.contains(pad), isAttached else { return }
         synth.setPadNote(note, pad: pad)
         padNotes[pad] = synth.padNote(pad) ?? note
         edited()
@@ -175,7 +184,7 @@ public final class AudioUnitModel: InstrumentModel {
     }
 
     public func setPadGroup(_ group: Int?, pad: Int) {
-        guard padGroups.indices.contains(pad) else { return }
+        guard padGroups.indices.contains(pad), isAttached else { return }
         synth.setPadGroup(group, pad: pad)
         padGroups[pad] = synth.padGroup(pad)
         edited()
@@ -193,7 +202,7 @@ public final class AudioUnitModel: InstrumentModel {
     /// they go to the engine first, so that a knob just turned or a program just chosen is sent
     /// too, whether the host renders or not.
     public func sendToPad(_ pad: Int) {
-        guard padNotes.indices.contains(pad) else { return }
+        guard padNotes.indices.contains(pad), isAttached else { return }
         for parameter in Parameters.all {
             synth.setValue(Self.value(of: parameter, in: unit), of: parameter, in: .keyboard)
         }
@@ -207,24 +216,26 @@ public final class AudioUnitModel: InstrumentModel {
 
     /// Selects the pad too, so that the knobs show what was just heard.
     public func hitPad(_ pad: Int, velocity: Int) {
-        guard padNotes.indices.contains(pad) else { return }
+        guard padNotes.indices.contains(pad), isAttached else { return }
         selectedPad = pad
         held.padDown(pad)
         synth.noteOn(PadGrid.note(ofPad: pad), velocity: velocity)
     }
 
     public func releasePad(_ pad: Int) {
-        guard padNotes.indices.contains(pad) else { return }
+        guard padNotes.indices.contains(pad), isAttached else { return }
         held.padUp(pad)
         synth.noteOff(PadGrid.note(ofPad: pad))
     }
 
     public func keyDown(_ note: Int, velocity: Int) {
+        guard isAttached else { return }
         held.keyDown(note)
         synth.noteOn(note, velocity: velocity)
     }
 
     public func keyUp(_ note: Int) {
+        guard isAttached else { return }
         held.keyUp(note)
         synth.noteOff(note)
     }
@@ -232,7 +243,9 @@ public final class AudioUnitModel: InstrumentModel {
     /// Lets go of every key and pad the mouse holds: when the window closes, the mouse-up may
     /// never arrive.
     public func releaseHeld() {
-        for note in held.releaseAll() { synth.noteOff(note) }
+        let notes = held.releaseAll()
+        guard isAttached else { return }
+        for note in notes { synth.noteOff(note) }
     }
 
     // MARK: Telling the host
@@ -244,7 +257,7 @@ public final class AudioUnitModel: InstrumentModel {
 
     /// Tells the host now if an edit is waiting: when the window closes.
     public func tellHostIfEdited() {
-        if hostNotice.isPending { tellHost() }
+        if hostNotice.isPending, isAttached { tellHost() }
     }
 
     /// The unit tells the host its saved state changed, and the host marks the project edited.
@@ -294,6 +307,13 @@ public final class AudioUnitModel: InstrumentModel {
     /// step with them.
     static let engineProperty: AudioUnitPropertyID = 64001
     static let stateChangedProperty: AudioUnitPropertyID = 64002
+
+    /// Whether the unit is still there with the engine the model borrowed. Asking a disposed unit
+    /// is safe: the Audio Unit API checks the instance and returns an error.
+    private var isAttached: Bool {
+        if !isDetached, Self.engine(of: unit) != engine { isDetached = true }
+        return !isDetached
+    }
 
     private static func engine(of unit: AudioUnit) -> OpaquePointer? {
         var engine: UnsafeMutableRawPointer?
