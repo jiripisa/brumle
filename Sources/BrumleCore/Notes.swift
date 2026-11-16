@@ -5,6 +5,11 @@ public enum Notes {
     /// Every MIDI note.
     public static let range: ClosedRange<Int> = 0...127
 
+    /// Every note by octave, C to B: C-1...B-1 first, C9...G9 last. The pitch menus' submenus.
+    public static let octaves: [ClosedRange<Int>] = stride(from: range.lowerBound, through: range.upperBound, by: 12).map {
+        $0...min($0 + 11, range.upperBound)
+    }
+
     private static let names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
 
     /// "C2" for 36, "C♯3" for 61. A note outside `range` counts as the nearest valid one.
