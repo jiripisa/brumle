@@ -62,6 +62,8 @@ documentation.
     disposed of.
   - Property 64002 is sent once after a drag ends (0.5 s debounce) and on window close.
   - The manual's pictures are renders of the real panel, to be replaced by real window shots.
+  - The table styles for the default kit table go into the shared `docs/assets/manual.css`.
+  - `docs/assets/manual/pads.png` at 1.6 MB, a little over the ~1.5 MB aim, is accepted.
 
 ## Not verified
 
