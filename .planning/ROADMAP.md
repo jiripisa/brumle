@@ -5,7 +5,8 @@ Phases, newest first. One phase = one folder in `phases/`, one branch, one
 
 | Phase | Goal | Status |
 |---|---|---|
-| 04-app-and-audiounit | The app and the AUv2 with the shared panel, both modes, Send to pad, pad editing, auval, manual EN + CS | next |
+| 05-presets-kits-midi-learn | User presets, kits (all 16 pads) as files shared by the app and the plug-in, MIDI controllers and learn | next |
+| 04-app-and-audiounit | The app and the AUv2 with the shared panel in the "Polar Khomus" look, both modes, mute groups, Send to pad, pad editing, LFO and VEL amounts on the knobs, auval, manual EN + CS — 2026-11-16 | ✅ |
 | 03-panel-design | Codex artwork of concept 2 "Polar Khomus": background, khomus, logo, knob cap, ornament — 2026-11-16 | ✅ |
 | 02-engine | Sound engine: `BrumleDSP` (voice pool, 17 knob sets, keyboard and pad modes, mute groups, LFOs, VEL amounts, 2× oversampling) and the `BrumleCore` wrapper; macOS 26 — 2026-11-16 | ✅ |
 | 01-skeleton | Empty app skeleton: SwiftPM, build/run scripts, signing + notarization pipeline, website — created 2026-11-15 | ✅ |
