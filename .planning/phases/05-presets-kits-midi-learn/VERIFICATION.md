@@ -7,8 +7,10 @@ and the plug-in share the preset and kit folders. The screen of this Mac stayed 
 real host, MIDI hardware or audio device was used (see "Not verified"); the app itself was driven
 from inside the running debug build.
 
-The checks below ran on `9d18393` (the last code commit); the phase's final commit changes only
-documentation.
+The checks below ran on `9d18393`. The final review's fix wave (`57228c5`…`5a78862`) changed
+code again, and was re-checked on `5a78862`: `swift test`, `swift test -c release` and
+`swift test --sanitize=thread` each passed 275 tests, `./build.sh release` succeeded, and
+`codesign --verify --deep --strict` passed.
 
 | Check | Result |
 |---|---|
