@@ -2,7 +2,7 @@
 
 ## 1. Toolchain & Project Layout
 
-- Xcode command line tools (Swift 6), macOS 14+. No Xcode project: Swift
+- Xcode command line tools (Swift 6.2), macOS 26+. No Xcode project: Swift
   Package Manager builds the code, `build.sh` assembles the `.app` bundle.
 
 ```

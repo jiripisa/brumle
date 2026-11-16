@@ -4,7 +4,7 @@ A playable synthesized jaw harp: twang, moving overtones, breath and rhythm, as 
 
 ## Code
 
-- Native macOS app, SwiftUI, macOS 14+. Swift Package Manager plus shell
+- Native macOS app, SwiftUI, macOS 26+. Swift Package Manager plus shell
   scripts; there is no Xcode project, so never add one.
 - `Sources/BrumleCore` holds logic without UI (no SwiftUI/AppKit) and is
   covered by `swift test` (Swift Testing). `Sources/Brumle` is the SwiftUI

@@ -2,7 +2,7 @@
 
 A playable synthesized jaw harp: twang, moving overtones, breath and rhythm, as an Audio Unit and a standalone app.
 
-Native macOS app (SwiftUI, macOS 14 or later), built with Swift Package
+Native macOS app (SwiftUI, macOS 26 or later), built with Swift Package
 Manager and shell scripts; no Xcode project.
 
 Website and manual: https://jiripisa.github.io/brumle/
