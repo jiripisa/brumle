@@ -46,4 +46,13 @@ public enum Velocity {
         let index = Int(brumle_vel_amount(Int32(parameter.index)))
         return Parameters.all.indices.contains(index) ? Parameters.all[index] : nil
     }
+
+    /// The part of a knob's travel (0...1) the velocity reaches: the knob is where the hardest
+    /// hit stands, and the softest moves it `amount` percent away, down for a positive amount,
+    /// up for a negative one, no further than its ends. Volume scales its gain instead, so its
+    /// arc only shows the direction and the size of the amount.
+    public static func arc(position: Double, amount: Double) -> ClosedRange<Double> {
+        let softest = position - amount / 100
+        return max(0, min(position, softest))...min(1, max(position, softest))
+    }
 }
