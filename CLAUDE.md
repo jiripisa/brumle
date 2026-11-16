@@ -14,6 +14,13 @@ A playable synthesized jaw harp: twang, moving overtones, breath and rhythm, as 
   `./build.sh [debug|release|dist|clean]`. Details in `development_workflow.md`.
 - Every user-visible change gets a line under `## Unreleased` in
   `CHANGELOG.md`; the release notes and the update dialog come from it.
+- **The Audio Unit's identity is permanent.** Its codes (`aumu` / `Brml` /
+  `JPis`, bundle id `io.jp4.brumle.audiounit`, the factory function
+  `BrumleAUFactory`, the view class `BrumleAUViewFactory`) and its
+  parameter IDs (the engine's parameter index, 0…80) never change: host
+  projects find the plug-in and their automation by them. The parameter
+  table only grows at its end. Validate every change of the Audio Unit with
+  `auval` (`development_workflow.md` §2.1).
 
 ## Releases
 

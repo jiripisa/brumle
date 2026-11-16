@@ -1,7 +1,8 @@
 import BrumleDSP
 
 /// When the standalone app writes the sound to its settings: half a second after the last edit,
-/// so that a knob drag, which edits many times a second, is written once, after it ends.
+/// so that a knob drag, which edits many times a second, is written once, after it ends. The
+/// plug-in's window tells the host of its pad edits on the same delay.
 public struct SaveDebounce: Sendable {
 
     /// How long after the last edit the sound is written.

@@ -10,6 +10,11 @@ brumle/
 ├── Package.swift
 ├── Sources/Brumle/          # SwiftUI app (thin layer)
 ├── Sources/BrumleCore/      # logic without UI, tested
+├── Sources/BrumleDSP/       # the sound engine, C++ behind a C interface
+├── Sources/BrumleUI/        # the instrument's panel, shared by the app and the plug-in
+├── Sources/BrumleAU/        # the Audio Unit (AUv2 instrument), C++ on ThirdParty/AudioUnitSDK
+├── Sources/BrumleAUView/    # the Audio Unit's window in a host
+├── Sources/BrumleAUExports/ # no code: what the Audio Unit's library exports (Package.swift)
 ├── Tests/BrumleCoreTests/   # Swift Testing
 ├── Resources/               # Info.plist, entitlements, AppIcon.png (1024 px)
 ├── scripts/make_appcast.py  # Sparkle feed, called by build.sh dist
@@ -32,13 +37,36 @@ brumle/
 Executable → `Contents/MacOS`, `Resources/Info.plist` → `Contents/`,
 `Resources/AppIcon.png` → `AppIcon.icns` (sips + iconutil), Sparkle.framework →
 `Contents/Frameworks` (XPC services removed; the app is unsandboxed), PkgInfo,
-then an ad-hoc signature with the entitlements. New resource files must be
-copied in `build.sh` explicitly.
+then an ad-hoc signature with the entitlements; a signature that fails stops
+the build. New resource files must be copied in `build.sh` explicitly.
+`Resources/Art/` (the panel's artwork) goes to `Contents/Resources/Art`.
+
+**The Audio Unit** is assembled in the same step: `libBrumleAU.dylib` →
+`Contents/PlugIns/Brumle.component/Contents/MacOS/Brumle`, with
+`Resources/AudioUnit-Info.plist` as its `Info.plist`. The dylib exports only
+the factory function `BrumleAUFactory` (`Package.swift`), because a plug-in
+shares the host's process with other plug-ins. `Resources/Art/` is copied
+into the component too: its own window (the class `BrumleAUViewFactory`,
+which the host finds through the unit's CocoaUI property) shows the app's
+panel. `build.sh` writes the app's version into that plist (both strings and
+the numeric `AudioComponents` version, `major << 16 | minor << 8 | patch`),
+so the version is bumped in one place. The component is signed before the
+app (ad-hoc, or Developer ID + hardened runtime in `dist`). Users install it
+from the app: Settings › Install Audio Unit copies it to
+`~/Library/Audio/Plug-Ins/Components`.
+
+Check a build of the plug-in with Apple's validator:
+
+```
+cp -R build/release/Brumle.app/Contents/PlugIns/Brumle.component ~/Library/Audio/Plug-Ins/Components/
+auval -v aumu Brml JPis        # must end with AU VALIDATION SUCCEEDED
+```
 
 ### 2.2 Distribution (`dist`)
 
-1. Sign Sparkle's parts inside-out, then the app with the first "Developer ID
-   Application" identity in the Keychain, hardened runtime, timestamp.
+1. Sign Sparkle's parts inside-out, then the Audio Unit's component, then the
+   app with the first "Developer ID Application" identity in the Keychain,
+   hardened runtime, timestamp.
 2. Notarize the zipped app (`notarytool --keychain-profile notary --wait`), staple it.
 3. Build `build/Brumle.dmg` (app + Applications symlink), sign, notarize, staple.
 4. `scripts/make_appcast.py` signs the stapled DMG with Sparkle's `sign_update`

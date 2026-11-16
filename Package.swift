@@ -11,8 +11,8 @@ let package = Package(
         .executable(name: "Brumle", targets: ["Brumle"]),
         // App logic without UI — what `swift test` covers.
         .library(name: "BrumleCore", targets: ["BrumleCore"]),
-        // The Audio Unit (build.sh turns it into Brumle.component).
-        .library(name: "BrumleAU", type: .dynamic, targets: ["BrumleAU", "BrumleAUExports"]),
+        // The Audio Unit and its window (build.sh turns it into Brumle.component).
+        .library(name: "BrumleAU", type: .dynamic, targets: ["BrumleAU", "BrumleAUView", "BrumleAUExports"]),
     ],
     dependencies: [
         // Auto-update: the standard updater for apps outside the App Store;
@@ -44,6 +44,13 @@ let package = Package(
             name: "BrumleAU",
             dependencies: ["BrumleDSP", "AudioUnitSDK"],
             path: "Sources/BrumleAU"
+        ),
+        // The Audio Unit's window in a host: the panel over the unit and its engine. The unit
+        // names its class (BrumleAUViewFactory) in its CocoaUI property.
+        .target(
+            name: "BrumleAUView",
+            dependencies: ["BrumleCore", "BrumleUI"],
+            path: "Sources/BrumleAUView"
         ),
         // No code, only what the Audio Unit's dynamic library exports.
         .target(
@@ -84,9 +91,9 @@ let package = Package(
         .target(name: "BrumleReference", path: "Tests/BrumleReference"),
         .testTarget(
             name: "BrumleCoreTests",
-            // The Audio Unit too, which the tests run inside their own process, and the
-            // panel's logic that does not need a window.
-            dependencies: ["BrumleCore", "BrumleDSP", "BrumleReference", "BrumleAU", "BrumleUI"],
+            // The Audio Unit too, which the tests run inside their own process, its window's
+            // model, and the panel's logic that does not need a window.
+            dependencies: ["BrumleCore", "BrumleDSP", "BrumleReference", "BrumleAU", "BrumleAUView", "BrumleUI"],
             path: "Tests/BrumleCoreTests"
         ),
     ],

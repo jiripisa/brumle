@@ -6,9 +6,9 @@ import BrumleDSP
 @testable import BrumleCore
 
 /// The Audio Unit, registered with this process only (no component bundle) under a subtype of
-/// its own, so that an installed copy stays out of it.
+/// its own, so that an installed copy stays out of it. The plug-in window's tests use it too.
 @MainActor
-private enum PlugIn {
+enum PlugIn {
 
     static let component: AudioComponent = {
         var description = AudioComponentDescription(componentType: kAudioUnitType_MusicDevice,
@@ -22,9 +22,9 @@ private enum PlugIn {
 }
 
 /// One instance of the unit, played the way a host plays it: initialised at a sample rate with
-/// a number of output channels, rendered block after block.
+/// a number of output channels, rendered block after block. The plug-in window's tests use it too.
 @MainActor
-private final class Instrument {
+final class Instrument {
 
     let unit: AudioUnit
     let rate: Double
@@ -148,7 +148,7 @@ private func peak(_ samples: [Float]) -> Float {
 }
 
 /// How many times a host's property listener was called. The unit calls it synchronously.
-private final class Calls {
+final class Calls {
     var count = 0
 }
 
