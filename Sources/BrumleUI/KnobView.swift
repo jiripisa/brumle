@@ -53,8 +53,11 @@ public struct KnobView: View {
     private let model: any InstrumentModel
     private let editing: KnobEditing
 
-    /// The parameter being dragged and its position when the drag began.
-    @State private var drag: (parameter: Parameter, start: Double)?
+    /// The drag under way, as one edit; nil between drags.
+    @State private var edit: KnobEdit?
+    /// True while the mouse drags the knob; SwiftUI puts it back when a drag
+    /// stops in any way, also one cancelled without `onEnded`.
+    @GestureState private var dragging = false
 
     /// The room a knob takes in a section's grid.
     public static var width: CGFloat { 74 }
@@ -103,8 +106,14 @@ public struct KnobView: View {
             }
             .frame(width: Self.dial, height: Self.dial)
             .contentShape(Circle())
-            .gesture(dragging)
-            .onTapGesture(count: 2) { model.resetToDefault(edited, in: set) }
+            .gesture(drag)
+            .onTapGesture(count: 2) { KnobEdit.reset(edited, in: set, model: model) }
+            // However a drag stops (cancelled, the knob stepping back, the view going away),
+            // the edit it began ends, in the set it began in.
+            .onChange(of: dragging) { _, isDragging in
+                if !isDragging { finishEdit() }
+            }
+            .onDisappear(perform: finishEdit)
             Text(valueText)
                 .font(.system(size: 12).monospacedDigit())
                 .foregroundStyle(amount == nil ? Artwork.silver : editing.colour)
@@ -164,28 +173,20 @@ public struct KnobView: View {
             .rotation(.degrees(135))
     }
 
-    private var dragging: some Gesture {
+    private var drag: some Gesture {
         DragGesture(minimumDistance: 1)
+            .updating($dragging) { _, isDragging, _ in isDragging = true }
             .onChanged { value in
-                let edited: Parameter, start: Double
-                if let drag {
-                    (edited, start) = drag
-                } else {
-                    (edited, start) = (self.edited, model.position(of: self.edited, in: set))
-                    drag = (edited, start)
-                    model.beginEditing(edited, in: set)
+                if edit == nil {
+                    edit = KnobEdit.begin(edited, in: set, isAmount: amount != nil, model: model)
                 }
-                let fine = NSEvent.modifierFlags.contains(.shift) ? 0.1 : 1.0
-                var position = min(max(start - value.translation.height / 200 * fine, 0), 1)
-                if edited != parameter {
-                    // An amount close to nothing is nothing, so that a source can be taken off a knob.
-                    position = Double(edited.normalised(LFOs.snapped(amount: edited.plain(Float(position)))))
-                }
-                model.setPosition(position, of: edited, in: set)
+                edit?.move(to: value.translation.height, fine: NSEvent.modifierFlags.contains(.shift), model: model)
             }
-            .onEnded { _ in
-                if let drag { model.endEditing(drag.parameter, in: set) }
-                drag = nil
-            }
+            .onEnded { _ in finishEdit() }
+    }
+
+    private func finishEdit() {
+        edit?.end(model: model)
+        edit = nil
     }
 }

@@ -12,6 +12,14 @@ struct SectionLayoutTests {
         }
     }
 
+    @Test("A switch names its choices; a knob has none")
+    func choices() {
+        #expect(Parameters.named("curve")!.choices == ["Glide", "Line", "There and Back", "Step"])
+        #expect(Parameters.named("curve")!.isChoice)
+        #expect(Parameters.named("ring")!.choices.isEmpty)
+        #expect(!Parameters.named("ring")!.isChoice && !Parameters.named("octave")!.isChoice)
+    }
+
     @Test("Each section has the columns of the approved mockup")
     func columns() {
         #expect(ParameterSection.all.map { SectionLayout.of($0).columns } == [2, 2, 3, 2, 3])

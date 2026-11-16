@@ -83,8 +83,9 @@ let package = Package(
         .target(name: "BrumleReference", path: "Tests/BrumleReference"),
         .testTarget(
             name: "BrumleCoreTests",
-            // The Audio Unit too, which the tests run inside their own process.
-            dependencies: ["BrumleCore", "BrumleDSP", "BrumleReference", "BrumleAU"],
+            // The Audio Unit too, which the tests run inside their own process, and the
+            // panel's logic that does not need a window.
+            dependencies: ["BrumleCore", "BrumleDSP", "BrumleReference", "BrumleAU", "BrumleUI"],
             path: "Tests/BrumleCoreTests"
         ),
     ],
