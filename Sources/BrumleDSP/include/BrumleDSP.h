@@ -112,6 +112,9 @@ int   brumle_pad_note(const BrumleEngine*, int pad);
 void  brumle_set_pad_note(BrumleEngine*, int pad, int note);
 int   brumle_pad_group(const BrumleEngine*, int pad);
 void  brumle_set_pad_group(BrumleEngine*, int pad, int group);   // 0 = Off
+// How many times a pad has been hit since the engine was created: the panel flashes a pad when it
+// changes. Counted on the audio thread; a reset leaves it alone. 0 for a bad pad.
+int   brumle_pad_hits(const BrumleEngine*, int pad);
 int   brumle_last_note(const BrumleEngine*);          // last keyboard-mode note-on since the last reset, -1 if none
 // Copies the keyboard set (and its program) and the pitch of the last note (36 if none) to a
 // pad; its group is kept. The copy goes value by value with relaxed atomics, not as a whole: a pad
