@@ -81,11 +81,12 @@ struct Reso
 // stroke: calibrates Body against the strongest harmonic (the prototype's --analyze).
 constexpr float kHarmonicRef = 0.35f;
 
-// Air and the breath bias fade with the reed's own decay (1 at the hit), as the author asked on
-// 2026-11-16 after hearing hiss in long tails: the slot's gate is open while the reed rests, so
-// both went on at a constant level until the voice retired.
+// Air and the breath bias fade with the reed, as the author asked on 2026-11-16 after hearing
+// hiss in long tails: the slot's gate is open while the reed rests, so both went on at a constant
+// level until the voice retired. Air follows the reed's own decay (1 at the hit); the breath
+// follows the reed's level, because the voice retires on a level (1e-5), however soft the hit.
 constexpr float kAirFadeBelow = 0.1f;        // Air fades with the reed once it is 20 dB down
-constexpr float kBreathFadeBelow = 0.001f;   // the breath fades over the reed's last 40 dB: no step at retire
+constexpr float kBreathFadeBelow = 0.001f;   // the breath fades over the 40 dB above the retire floor: ~1 % at most when the voice retires
 
 struct Voice
 {
@@ -237,7 +238,7 @@ struct Voice
         const float puffEnv = t < pt ? (float)(1.0 - t / pt) : 0.0f;
         const float ra = a / swing;   // the reed's own decay: 1 at the hit
         const float gN = std::min(1.0f, ra / kAirFadeBelow);
-        const float gB = std::min(1.0f, ra / kBreathFadeBelow);
+        const float gB = std::min(1.0f, a / kBreathFadeBelow);
         const float b = gB * (0.5f * breath + 0.5f * puffAmt * puffEnv * (breath < 0 ? -1.0f : 1.0f));
         const float th = std::tanh(u);
         const float gate = 1.0f - th * th;

@@ -106,9 +106,11 @@ struct EngineTests: EngineHarness {
 
     // The slot's gate is open while the reed rests, so Air and the breath used to go on at a
     // constant level until the voice retired, and the breath stopped as a step there. Since
-    // 2026-11-16 both fade with the reed.
+    // 2026-11-16 both fade with the reed. The breath fades with the reed's level, not with its
+    // decay since the hit: the voice retires on a level, so the softest hit, whose reed starts
+    // 42 dB down, must not retire with its breath still on (it did, as a step at -34 dBFS).
     @Test("Air fades with the reed's tail, and the breath ends without a step at retire")
-    func tailFades() {
+    func tailFades() throws {
         let engine = makeEngine()
         defer { brumle_destroy(engine) }
         brumle_midi(engine, 0x90, 36, 127, 0)
@@ -123,6 +125,20 @@ struct EngineTests: EngineHarness {
         let tail = x[Self.frames(4)...]
         let step = zip(tail.dropFirst(), tail).map { abs($0 - $1) }.max() ?? 0
         #expect(step < 1e-5, "largest sample-to-sample difference after 4 s: \(step)")
+
+        // The softest hit with the most breath: the 50 ms either side of the block it retires in.
+        let soft = makeEngine(Self.plain.merging(["velsens": 100, "breath": 100]) { $1 })
+        defer { brumle_destroy(soft) }
+        brumle_midi(soft, 0x90, 36, 1, 0)
+        var y: [Float] = [], retired: Int?
+        while y.count < Self.frames(8) {
+            y += render(soft, frames: 128)
+            if retired == nil && brumle_sounding_voices(soft) == 0 { retired = y.count }
+        }
+        let retire = try #require(retired, "the soft voice has not retired within 8 s")
+        let around = y[(retire - Self.frames(0.05))..<(retire + Self.frames(0.05))]
+        let softStep = zip(around.dropFirst(), around).map { abs($0 - $1) }.max() ?? 0
+        #expect(20 * log10(softStep) < -90, "largest step around the soft voice's retire: \(20 * log10(softStep)) dBFS")
     }
 
     @Test("Silence is exact 20 s after the last hit")
