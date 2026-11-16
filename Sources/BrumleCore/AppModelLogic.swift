@@ -85,4 +85,10 @@ extension PadLabel {
     public static func name(program: Int) -> String {
         Programs.names.indices.contains(program) ? Programs.names[program] : "Custom"
     }
+
+    /// A pad's name: its preset's, if it has one; otherwise its program's; otherwise "Custom".
+    public static func name(program: Int, preset: String?) -> String {
+        if let preset, !preset.isEmpty { return preset }
+        return name(program: program)
+    }
 }

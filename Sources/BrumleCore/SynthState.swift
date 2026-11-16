@@ -7,18 +7,22 @@ public struct SetState: Codable, Equatable, Sendable {
     public var program: Int
     /// Plain values by parameter identifier.
     public var values: [String: Float]
+    /// The preset the set came from, nil for a built-in program or a sound made by hand.
+    public var preset: String?
 
-    public init(program: Int, values: [String: Float]) {
+    public init(program: Int, values: [String: Float], preset: String? = nil) {
         self.program = program
         self.values = values
+        self.preset = preset
     }
 
-    /// A field the data lacks gets its default (program 0, no values: every knob keeps its own);
-    /// a field this version does not know is ignored.
+    /// A field the data lacks gets its default (program 0, no values: every knob takes its
+    /// program's value, no preset); a field this version does not know is ignored.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         program = try container.decodeIfPresent(Int.self, forKey: .program) ?? 0
         values = try container.decodeIfPresent([String: Float].self, forKey: .values) ?? [:]
+        preset = try container.decodeIfPresent(String.self, forKey: .preset)
     }
 }
 
@@ -96,7 +100,8 @@ extension Synth {
     }
 
     /// Puts a saved state in. A value for a name this version does not know is ignored, a knob the
-    /// state does not mention keeps its value, and fewer than sixteen pads leave the rest alone.
+    /// state does not mention takes the value of the state's program, and fewer than sixteen pads
+    /// leave the rest alone.
     public func apply(_ state: SynthState) {
         mode = state.mode
         apply(state.keyboard, to: .keyboard)
@@ -107,13 +112,14 @@ extension Synth {
         }
     }
 
-    private func apply(_ saved: SetState, to set: SoundSet) {
-        // Loading a program overwrites the whole set, so take the knobs the state does not mention
-        // away first and put them back after.
-        let kept = Parameters.all.filter { saved.values[$0.identifier] == nil }
-            .map { ($0, normalisedValue(of: $0, in: set)) }
+    /// Puts one set's saved knobs in: its program first, then each value; a knob the set does not
+    /// mention takes the program's value (the octave too, which loading a program leaves alone).
+    /// The set's `preset` is not the engine's to keep: the models remember it.
+    public func apply(_ saved: SetState, to set: SoundSet) {
         if saved.program != program(in: set) { loadProgram(saved.program, into: set) }
-        for (parameter, normalised) in kept { setNormalisedValue(normalised, of: parameter, in: set) }
+        for parameter in Parameters.all where saved.values[parameter.identifier] == nil {
+            setValue(Programs.value(program: saved.program, parameter: parameter), of: parameter, in: set)
+        }
         for (identifier, plain) in saved.values {
             if let parameter = Parameters.named(identifier) { setValue(plain, of: parameter, in: set) }
         }
