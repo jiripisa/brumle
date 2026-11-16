@@ -27,6 +27,57 @@ struct SynthTests {
         #expect(SoundSet.keyboard.index == 0 && SoundSet.pad(0).index == 1 && SoundSet.pad(15).index == 16)
     }
 
+    /// Every knob of every set (the keyboard, then pads 0...15), normalised, with each set's
+    /// program, and every pad's note and group.
+    private func everything(_ synth: Synth) -> (knobs: [[Float]], programs: [Int], notes: [Int?], groups: [Int?]) {
+        let sets = [SoundSet.keyboard] + (0..<16).map { SoundSet.pad($0) }
+        return (sets.map { set in Parameters.all.map { synth.normalisedValue(of: $0, in: set) } },
+                sets.map { synth.program(in: $0) },
+                (0..<16).map { synth.padNote($0) },
+                (0..<16).map { synth.padGroup($0) })
+    }
+
+    @Test("Writing one pad's set leaves the other pads and the keyboard set as they were")
+    func padSetsApart() throws {
+        let synth = Synth()
+        let vowel = try #require(Parameters.named("vowel"))
+        let before = everything(synth)
+        synth.loadProgram(before.programs[6] == 3 ? 4 : 3, into: .pad(5))
+        synth.setValue(vowel.range.upperBound, of: vowel, in: .pad(5))
+        let after = everything(synth)
+        for set in after.knobs.indices where set != 6 {
+            #expect(after.knobs[set] == before.knobs[set], "set \(set) changed")
+            #expect(after.programs[set] == before.programs[set], "the program of set \(set) changed")
+        }
+        #expect(after.knobs[6] != before.knobs[6] && after.programs[6] != before.programs[6])
+        #expect(after.notes == before.notes && after.groups == before.groups)
+    }
+
+    @Test("A pad outside 0...15 is ignored: nothing is written, and reading it gives defaults and nil")
+    func padsOutOfRange() throws {
+        let synth = Synth()
+        let vowel = try #require(Parameters.named("vowel"))
+        synth.noteOn(52)                        // what Send to pad would copy
+        _ = render(synth)
+        let before = everything(synth)
+        for pad in [-1, 16, 20] {
+            #expect(SoundSet.pad(pad).index == -1)
+            synth.setValue(vowel.range.lowerBound, of: vowel, in: .pad(pad))
+            synth.setNormalisedValue(1, of: vowel, in: .pad(pad))
+            synth.loadProgram(3, into: .pad(pad))
+            synth.setPadNote(70, pad: pad)
+            synth.setPadGroup(5, pad: pad)
+            synth.sendToPad(pad)
+            #expect(synth.value(of: vowel, in: .pad(pad)) == vowel.defaultValue)
+            #expect(synth.normalisedValue(of: vowel, in: .pad(pad)) == vowel.normalised(vowel.defaultValue))
+            #expect(synth.program(in: .pad(pad)) == 0)
+            #expect(synth.padNote(pad) == nil && synth.padGroup(pad) == nil)
+        }
+        let after = everything(synth)
+        #expect(after.knobs == before.knobs && after.programs == before.programs)
+        #expect(after.notes == before.notes && after.groups == before.groups)
+    }
+
     @Test("A program loads into its own set")
     func programs() {
         let synth = Synth()

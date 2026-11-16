@@ -10,16 +10,20 @@ public enum PlayMode: Int, Sendable {
 /// A set of knobs: the keyboard's, or one of the sixteen pads'.
 public enum SoundSet: Hashable, Sendable {
     case keyboard
-    /// A pad, 0...15.
+    /// A pad, 0...15. A pad outside that range is no set: `Synth` ignores it.
     case pad(Int)
 
-    /// The engine's index of the set: 0 for the keyboard, 1...16 for a pad.
+    /// The engine's index of the set: 0 for the keyboard, 1...16 for a pad, and -1 for a pad
+    /// outside 0...15, which the engine ignores.
     var index: Int32 {
         switch self {
         case .keyboard: Int32(BRUMLE_KEYBOARD_SET)
-        case .pad(let pad): Int32(Synth.clampedPad(pad) + 1)
+        case .pad(let pad): Synth.padIndex(pad).map { $0 + 1 } ?? -1
         }
     }
+
+    /// False for a pad outside 0...15.
+    var exists: Bool { index >= 0 }
 }
 
 /// One Brumle: the sound engine with its parameters, pads, MIDI input and audio output.
@@ -27,6 +31,10 @@ public enum SoundSet: Hashable, Sendable {
 /// Thread rules (the engine's own): `render` belongs to the audio thread; parameters, programs,
 /// the mode, the pads and `postMIDI` may be used from any thread while audio runs. `prepare` must
 /// not run while `render` does.
+///
+/// Pads are 0...15. A pad outside that range is ignored, as the engine ignores it: what is set
+/// on it, sent to it or loaded into it goes nowhere, and reading it gives each parameter's
+/// default value, program 0, and nil for its note and its group.
 public final class Synth: @unchecked Sendable {
 
     /// The engine. Internal, so that the rest of the core can add to what a synth offers.
@@ -42,10 +50,11 @@ public final class Synth: @unchecked Sendable {
         brumle_destroy(engine)
     }
 
-    /// Call before audio starts and whenever the sample rate changes.
+    /// Call before audio starts and whenever the sample rate changes. Like the engine's prepare,
+    /// it also resets: every voice falls silent, the wheels go to rest and the last note is
+    /// forgotten.
     public func prepare(sampleRate: Double) {
         brumle_prepare(engine, sampleRate)
-        brumle_reset(engine)
     }
 
     /// Host frames the output lags the MIDI: the delay of the decimator below 88.2 kHz, where the
@@ -56,7 +65,8 @@ public final class Synth: @unchecked Sendable {
 
     /// Plain (real) value of a parameter in a set.
     public func value(of parameter: Parameter, in set: SoundSet = .keyboard) -> Float {
-        brumle_get_plain(engine, set.index, Int32(parameter.index))
+        guard set.exists else { return parameter.defaultValue }
+        return brumle_get_plain(engine, set.index, Int32(parameter.index))
     }
 
     public func setValue(_ plain: Float, of parameter: Parameter, in set: SoundSet = .keyboard) {
@@ -65,7 +75,8 @@ public final class Synth: @unchecked Sendable {
 
     /// Knob position, 0...1.
     public func normalisedValue(of parameter: Parameter, in set: SoundSet = .keyboard) -> Float {
-        brumle_get_normalised(engine, set.index, Int32(parameter.index))
+        guard set.exists else { return parameter.normalised(parameter.defaultValue) }
+        return brumle_get_normalised(engine, set.index, Int32(parameter.index))
     }
 
     public func setNormalisedValue(_ normalised: Float, of parameter: Parameter, in set: SoundSet = .keyboard) {
@@ -90,23 +101,27 @@ public final class Synth: @unchecked Sendable {
         set { brumle_set_mode(engine, Int32(newValue.rawValue)) }
     }
 
-    /// The pitch of a pad, a MIDI note.
-    public func padNote(_ pad: Int) -> Int {
-        Int(brumle_pad_note(engine, Int32(Self.clampedPad(pad))))
+    /// The pitch of a pad, a MIDI note; nil for a pad outside 0...15.
+    public func padNote(_ pad: Int) -> Int? {
+        guard let index = Self.padIndex(pad) else { return nil }
+        return Int(brumle_pad_note(engine, index))
     }
 
     public func setPadNote(_ note: Int, pad: Int) {
-        brumle_set_pad_note(engine, Int32(Self.clampedPad(pad)), Int32(Self.dataByte(note)))
+        guard let index = Self.padIndex(pad) else { return }
+        brumle_set_pad_note(engine, index, Int32(Self.dataByte(note)))
     }
 
-    /// The mute group of a pad, 1...16; nil for Off.
+    /// The mute group of a pad, 1...16; nil for Off, and for a pad outside 0...15.
     public func padGroup(_ pad: Int) -> Int? {
-        let group = Int(brumle_pad_group(engine, Int32(Self.clampedPad(pad))))
+        guard let index = Self.padIndex(pad) else { return nil }
+        let group = Int(brumle_pad_group(engine, index))
         return group > 0 ? group : nil
     }
 
     public func setPadGroup(_ group: Int?, pad: Int) {
-        brumle_set_pad_group(engine, Int32(Self.clampedPad(pad)), Int32(group ?? 0))
+        guard let index = Self.padIndex(pad) else { return }
+        brumle_set_pad_group(engine, index, Int32(group ?? 0))
     }
 
     /// The last note played in keyboard mode since the last reset; nil if none.
@@ -119,7 +134,8 @@ public final class Synth: @unchecked Sendable {
     /// to a pad; the pad keeps its group. The copy goes value by value, not as a whole: a pad hit
     /// landing mid-copy freezes a mix of old and new values for that one hit.
     public func sendToPad(_ pad: Int) {
-        brumle_send_to_pad(engine, Int32(Self.clampedPad(pad)))
+        guard let index = Self.padIndex(pad) else { return }
+        brumle_send_to_pad(engine, index)
     }
 
     /// Puts the built-in kit into every pad (sound, pitch and group). Copies value by value like
@@ -131,8 +147,9 @@ public final class Synth: @unchecked Sendable {
     /// Voices playing and not being choked (at most 16).
     public var soundingVoices: Int { Int(brumle_sounding_voices(engine)) }
 
-    fileprivate static func clampedPad(_ pad: Int) -> Int {
-        min(max(pad, 0), Int(BRUMLE_NUM_PADS) - 1)
+    /// The engine's index of a pad; nil outside 0...15.
+    fileprivate static func padIndex(_ pad: Int) -> Int32? {
+        pad >= 0 && pad < Int(BRUMLE_NUM_PADS) ? Int32(pad) : nil
     }
 
     // MARK: MIDI
@@ -173,8 +190,8 @@ public final class Synth: @unchecked Sendable {
 
     // MARK: Audio
 
-    /// Renders `frames` samples. The instrument is mono: both buffers get the same signal.
-    /// `right` may be nil. Audio thread only.
+    /// Renders `frames` samples in stereo: Pan places each voice between the two buffers.
+    /// `right` may be nil: `left` then gets the left channel. Audio thread only.
     public func render(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>?, frames: Int) {
         brumle_process(engine, left, right, Int32(frames))
     }
