@@ -90,33 +90,34 @@ struct SoundRegressionTests {
         }
     }
 
-    /// Taken on 2026-11-16 from the engine of phase 02 (the sound engine). A debug build and a
-    /// release build rendered the same samples.
+    /// Taken on 2026-11-16 from the engine of phase 02 (the sound engine), and taken again the same
+    /// day when Air and the breath were made to fade with the reed (the tails had hissed). A debug
+    /// build and a release build rendered the same samples.
     private static let references: [Reference] = [
-        Reference(score: "default phrase", sampleRate: 44100, fingerprint: 0x850B12AA838154, levels: [0.035967, 0.00315, 0.039354, 0.051396, 0.054573, 0.050979, 0.045164, 0.009028, 0.001041]),
-        Reference(score: "default phrase", sampleRate: 48000, fingerprint: 0x59F6B133A08D2548, levels: [0.03597, 0.003145, 0.03942, 0.051431, 0.054636, 0.050981, 0.045125, 0.009037, 0.001049]),
-        Reference(score: "default phrase", sampleRate: 96000, fingerprint: 0x27360D235B655121, levels: [0.03597, 0.003145, 0.039429, 0.051293, 0.05447, 0.050939, 0.045067, 0.009031, 0.001036]),
-        Reference(score: "damped phrase", sampleRate: 44100, fingerprint: 0x5818B9C41B4B4F7C, levels: [0.035967, 0.00315, 0.040317, 0.06005, 0.065371, 0.06083, 0.058066, 0.012099, 0.001233]),
-        Reference(score: "damped phrase", sampleRate: 48000, fingerprint: 0xABE6449773EBB7F7, levels: [0.03597, 0.003145, 0.040249, 0.059821, 0.065329, 0.060658, 0.058018, 0.012099, 0.001232]),
-        Reference(score: "damped phrase", sampleRate: 96000, fingerprint: 0xC839D6E9730DAC51, levels: [0.03597, 0.003145, 0.040251, 0.059869, 0.065187, 0.06068, 0.057918, 0.012098, 0.001236]),
-        Reference(score: "stroke in", sampleRate: 44100, fingerprint: 0x4865729062BE95FA, levels: [0.037461, 0.003164, 0.039792, 0.052069, 0.055282, 0.05179, 0.046176, 0.009002, 0.001048]),
-        Reference(score: "stroke in", sampleRate: 48000, fingerprint: 0x38B952E40AB71896, levels: [0.037457, 0.003159, 0.03983, 0.052096, 0.055299, 0.05181, 0.04615, 0.009085, 0.001048]),
-        Reference(score: "stroke in", sampleRate: 96000, fingerprint: 0xD1CB17CAF635042B, levels: [0.03746, 0.003121, 0.039832, 0.052202, 0.055437, 0.051949, 0.046298, 0.008918, 0.001052]),
-        Reference(score: "stroke out", sampleRate: 44100, fingerprint: 0x31844E1E03652357, levels: [0.035967, 0.00315, 0.037855, 0.049121, 0.053063, 0.048571, 0.044548, 0.009028, 0.001041]),
-        Reference(score: "stroke out", sampleRate: 48000, fingerprint: 0xABB80CF7F9098DDE, levels: [0.03597, 0.003145, 0.037901, 0.049045, 0.05305, 0.048565, 0.044544, 0.009037, 0.001049]),
-        Reference(score: "stroke out", sampleRate: 96000, fingerprint: 0xB05F5AF58D35B517, levels: [0.03597, 0.003145, 0.03791, 0.04916, 0.053019, 0.04859, 0.044573, 0.009031, 0.001036]),
-        Reference(score: "default kit groove", sampleRate: 44100, fingerprint: 0xB94E10323F7FE34A, levels: [0.074332, 0.095619, 0.087417, 0.087754, 0.078244, 0.083487, 0.089183, 0.089506, 0.077366, 0.058057, 0.034621, 0.009197]),
-        Reference(score: "default kit groove", sampleRate: 48000, fingerprint: 0x29AF4B449E7079B8, levels: [0.07542, 0.095418, 0.08773, 0.088327, 0.078891, 0.084318, 0.089652, 0.088969, 0.077941, 0.058519, 0.033581, 0.00918]),
-        Reference(score: "default kit groove", sampleRate: 96000, fingerprint: 0x12F5BDC255F11395, levels: [0.074551, 0.095348, 0.087499, 0.088055, 0.078143, 0.084057, 0.08894, 0.089097, 0.078398, 0.057826, 0.0341, 0.009614]),
-        Reference(score: "pads, group off", sampleRate: 44100, fingerprint: 0xF2C76104EA97C804, levels: [0.043397, 0.044812, 0.004009, 0.00069]),
-        Reference(score: "pads, group off", sampleRate: 48000, fingerprint: 0x776376C33B3A5DF5, levels: [0.043623, 0.04472, 0.004, 0.000668]),
-        Reference(score: "pads, group off", sampleRate: 96000, fingerprint: 0x935735219506E8FA, levels: [0.04348, 0.044631, 0.004012, 0.000675]),
-        Reference(score: "pads, one group", sampleRate: 44100, fingerprint: 0x8184BA55819385BC, levels: [0.043737, 0.042387, 0.000439, 0.0]),
-        Reference(score: "pads, one group", sampleRate: 48000, fingerprint: 0x9848F350846DFFB5, levels: [0.043745, 0.042371, 0.000411, 0.0]),
-        Reference(score: "pads, one group", sampleRate: 96000, fingerprint: 0xDEF1141D3302FD2C, levels: [0.04374, 0.042369, 0.000421, 0.0]),
-        Reference(score: "lfo and vel", sampleRate: 44100, fingerprint: 0x6864EAE7FC351D3F, levels: [0.029848, 0.001355, 0.034552, 0.047546, 0.053238, 0.0458, 0.046038, 0.004965, 0.000508]),
-        Reference(score: "lfo and vel", sampleRate: 48000, fingerprint: 0xC23752098714AD6D, levels: [0.029846, 0.001351, 0.034554, 0.047562, 0.053371, 0.045807, 0.046069, 0.004962, 0.000473]),
-        Reference(score: "lfo and vel", sampleRate: 96000, fingerprint: 0xE55DAC0341704F6C, levels: [0.029846, 0.001354, 0.034554, 0.047626, 0.05281, 0.045738, 0.045903, 0.004961, 0.000488]),
+        Reference(score: "default phrase", sampleRate: 44100, fingerprint: 0x201F5E42E15E80D7, levels: [0.035967, 0.003146, 0.039354, 0.051395, 0.054571, 0.050977, 0.045163, 0.009028, 0.001015]),
+        Reference(score: "default phrase", sampleRate: 48000, fingerprint: 0x121A252046361A64, levels: [0.03597, 0.003141, 0.039423, 0.051429, 0.054631, 0.050977, 0.045124, 0.009037, 0.001024]),
+        Reference(score: "default phrase", sampleRate: 96000, fingerprint: 0x4B4B4F989C17319C, levels: [0.03597, 0.003141, 0.039431, 0.051289, 0.054468, 0.050937, 0.045067, 0.009031, 0.001009]),
+        Reference(score: "damped phrase", sampleRate: 44100, fingerprint: 0x12115195DD6E5469, levels: [0.035967, 0.003146, 0.040315, 0.060045, 0.065367, 0.060826, 0.058061, 0.012099, 0.001222]),
+        Reference(score: "damped phrase", sampleRate: 48000, fingerprint: 0xFB69C6CC45F6C6C2, levels: [0.03597, 0.003141, 0.040248, 0.059817, 0.065326, 0.060654, 0.058016, 0.012099, 0.001222]),
+        Reference(score: "damped phrase", sampleRate: 96000, fingerprint: 0x15A461AB43325EA8, levels: [0.03597, 0.003141, 0.04025, 0.059866, 0.065184, 0.060677, 0.057915, 0.012098, 0.001225]),
+        Reference(score: "stroke in", sampleRate: 44100, fingerprint: 0xDABC45ACFCDF1BA6, levels: [0.037461, 0.00316, 0.039791, 0.052066, 0.055276, 0.051784, 0.04617, 0.009002, 0.001021]),
+        Reference(score: "stroke in", sampleRate: 48000, fingerprint: 0xD2C943BC7A5284BC, levels: [0.037457, 0.003155, 0.039828, 0.052091, 0.055292, 0.051803, 0.046145, 0.009085, 0.001023]),
+        Reference(score: "stroke in", sampleRate: 96000, fingerprint: 0xD4D0D9E4209EB85F, levels: [0.03746, 0.003117, 0.039829, 0.052197, 0.055431, 0.051941, 0.046293, 0.008918, 0.001025]),
+        Reference(score: "stroke out", sampleRate: 44100, fingerprint: 0xE0C3399BDF47B72A, levels: [0.035967, 0.003146, 0.037854, 0.049124, 0.053069, 0.048576, 0.044552, 0.009028, 0.001015]),
+        Reference(score: "stroke out", sampleRate: 48000, fingerprint: 0x74F595CB2C3ACBFB, levels: [0.03597, 0.003141, 0.037902, 0.049049, 0.053053, 0.048571, 0.044547, 0.009037, 0.001024]),
+        Reference(score: "stroke out", sampleRate: 96000, fingerprint: 0x39648A589FD219E2, levels: [0.03597, 0.003141, 0.037911, 0.049165, 0.053023, 0.048594, 0.044575, 0.009031, 0.001009]),
+        Reference(score: "default kit groove", sampleRate: 44100, fingerprint: 0x9BAECA16AA5BFD03, levels: [0.074332, 0.095616, 0.087405, 0.087756, 0.078232, 0.083477, 0.089177, 0.089497, 0.077371, 0.058054, 0.034587, 0.009063]),
+        Reference(score: "default kit groove", sampleRate: 48000, fingerprint: 0xF8C7F1941F8A9A1A, levels: [0.07542, 0.095424, 0.087713, 0.088331, 0.078876, 0.084316, 0.089646, 0.088965, 0.077939, 0.05851, 0.033539, 0.009065]),
+        Reference(score: "default kit groove", sampleRate: 96000, fingerprint: 0x56A1351A72603567, levels: [0.074551, 0.095354, 0.087479, 0.088058, 0.078131, 0.084047, 0.088934, 0.0891, 0.078391, 0.057824, 0.034063, 0.009505]),
+        Reference(score: "pads, group off", sampleRate: 44100, fingerprint: 0x75DE1704A4E149C8, levels: [0.043397, 0.04482, 0.003988, 0.000543]),
+        Reference(score: "pads, group off", sampleRate: 48000, fingerprint: 0x7BB0B19F97D85BF7, levels: [0.043623, 0.044719, 0.00398, 0.000536]),
+        Reference(score: "pads, group off", sampleRate: 96000, fingerprint: 0x9B906AA7C2F09092, levels: [0.04348, 0.04463, 0.003986, 0.000536]),
+        Reference(score: "pads, one group", sampleRate: 44100, fingerprint: 0x38D115C43EA47D77, levels: [0.043737, 0.042389, 0.00015, 0.0]),
+        Reference(score: "pads, one group", sampleRate: 48000, fingerprint: 0x707CB3DE5DA2B111, levels: [0.043745, 0.042372, 0.000149, 0.0]),
+        Reference(score: "pads, one group", sampleRate: 96000, fingerprint: 0x570E47BF5006BBAC, levels: [0.043741, 0.042369, 0.000148, 0.0]),
+        Reference(score: "lfo and vel", sampleRate: 44100, fingerprint: 0xE47715F11EB6D888, levels: [0.029848, 0.001314, 0.034547, 0.047542, 0.053233, 0.045799, 0.046032, 0.004956, 5.7e-05]),
+        Reference(score: "lfo and vel", sampleRate: 48000, fingerprint: 0x935FCCA2C20F2A85, levels: [0.029846, 0.001312, 0.034552, 0.047561, 0.05337, 0.045805, 0.046071, 0.004952, 5.6e-05]),
+        Reference(score: "lfo and vel", sampleRate: 96000, fingerprint: 0x2AFDF326C8FCC552, levels: [0.029846, 0.001313, 0.034552, 0.047626, 0.052808, 0.045735, 0.0459, 0.004951, 5.6e-05]),
     ]
 
     private static func render(_ score: Case, sampleRate: Double) -> [Float] {

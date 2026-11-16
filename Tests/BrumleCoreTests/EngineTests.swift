@@ -104,6 +104,27 @@ struct EngineTests: EngineHarness {
         }
     }
 
+    // The slot's gate is open while the reed rests, so Air and the breath used to go on at a
+    // constant level until the voice retired, and the breath stopped as a step there. Since
+    // 2026-11-16 both fade with the reed.
+    @Test("Air fades with the reed's tail, and the breath ends without a step at retire")
+    func tailFades() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        brumle_midi(engine, 0x90, 36, 127, 0)
+        let x = render(engine, seconds: 8)
+        #expect(brumle_sounding_voices(engine) == 0, "the voice has not retired within 8 s")
+
+        let early = rms(x[Self.frames(2.0)..<Self.frames(2.5)])
+        let late = rms(x[Self.frames(3.0)..<Self.frames(3.5)])
+        let fall = 20 * log10(late / early)
+        #expect(fall < -12, "3.0-3.5 s is \(fall) dB re 2.0-2.5 s")
+
+        let tail = x[Self.frames(4)...]
+        let step = zip(tail.dropFirst(), tail).map { abs($0 - $1) }.max() ?? 0
+        #expect(step < 1e-5, "largest sample-to-sample difference after 4 s: \(step)")
+    }
+
     @Test("Silence is exact 20 s after the last hit")
     func silenceIsExact() {
         let engine = makeEngine()

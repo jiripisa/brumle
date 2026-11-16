@@ -81,6 +81,12 @@ struct Reso
 // stroke: calibrates Body against the strongest harmonic (the prototype's --analyze).
 constexpr float kHarmonicRef = 0.35f;
 
+// Air and the breath bias fade with the reed's own decay (1 at the hit), as the author asked on
+// 2026-11-16 after hearing hiss in long tails: the slot's gate is open while the reed rests, so
+// both went on at a constant level until the voice retired.
+constexpr float kAirFadeBelow = 0.1f;        // Air fades with the reed once it is 20 dB down
+constexpr float kBreathFadeBelow = 0.001f;   // the breath fades over the reed's last 40 dB: no step at retire
+
 struct Voice
 {
     bool active = false, choking = false;
@@ -229,12 +235,15 @@ struct Voice
         const float v = -dir * a * s;
         const float pt = pufftime;
         const float puffEnv = t < pt ? (float)(1.0 - t / pt) : 0.0f;
-        const float b = 0.5f * breath + 0.5f * puffAmt * puffEnv * (breath < 0 ? -1.0f : 1.0f);
+        const float ra = a / swing;   // the reed's own decay: 1 at the hit
+        const float gN = std::min(1.0f, ra / kAirFadeBelow);
+        const float gB = std::min(1.0f, ra / kBreathFadeBelow);
+        const float b = gB * (0.5f * breath + 0.5f * puffAmt * puffEnv * (breath < 0 ? -1.0f : 1.0f));
         const float th = std::tanh(u);
         const float gate = 1.0f - th * th;
         float src = gate * (v + b) * std::fabs(v + b);
         const float n = (float)noise() / (float)noise.max() * 2.0f - 1.0f;
-        src += airAmt * n * (gate + 0.05f) * (0.3f + std::fabs(b));
+        src += gN * (airAmt * n * (gate + 0.05f) * (0.3f + std::fabs(b)));
 
         float y = vowelGain * vowelR.step(src) * resoGain * resoNorm
                 + throatGain * throatR.step(src) * 2.0f
