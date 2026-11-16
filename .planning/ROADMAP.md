@@ -5,7 +5,7 @@ Phases, newest first. One phase = one folder in `phases/`, one branch, one
 
 | Phase | Goal | Status |
 |---|---|---|
-| 08-v1.0.0-release | Version 1.0.0 | next |
+| 08-v1.0.0-release | Version 1.0.0: the new icon and website look, signed and notarized DMG, appcast, GitHub Release, catalog — 2026-11-16 | ✅ |
 | 07-icon-website | App icon and website look by Codex (hero art, ornament, the app's palette) — 2026-11-16 | ✅ |
 | 06-v0.1.0-release | The first release, v0.1.0: signed and notarized DMG, Sparkle appcast, GitHub Release — 2026-11-16 | ✅ |
 | 05-presets-kits-midi-learn | User presets, kits (all 16 pads) as files shared by the app and the plug-in, MIDI controllers and learn, the AU saving controllers, presets in use and the selected pad; manual EN + CS — 2026-11-16 | ✅ |

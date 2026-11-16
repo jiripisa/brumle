@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 — 2026-11-16
 
 - A new app icon: the silver khomus on dark leather, filling the whole icon tile.
 

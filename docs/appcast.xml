@@ -5,13 +5,13 @@
     <link>https://jiripisa.github.io/brumle/</link>
     <description>Brumle updates</description>
     <item>
-      <title>Brumle 0.1.0</title>
-      <sparkle:version>0.1.0</sparkle:version>
-      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <title>Brumle 1.0.0</title>
+      <sparkle:version>1.0.0</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <pubDate>Mon, 16 Nov 2026 11:09:57 +0000</pubDate>
-      <description><![CDATA[<ul><li>First version.</li><li>Requires macOS 26 or later.</li><li>Sound engine: a synthesized jaw harp with keyboard and pad modes.</li><li>The app plays Brumle: from MIDI or the on-screen keyboard and pads, through the audio output you choose.</li><li>Keyboard mode plays one sound at every note&#x27;s pitch; pad mode gives 16 pads (notes 36–51) a sound and a pitch of their own.</li><li>Mute groups for the pads, as on an MPC: a hit silences the other pads of its group.</li><li>Pad editing: select a pad to show and edit its sound with the knobs, and set its pitch and group beside the pads.</li><li>Send to pad copies the keyboard&#x27;s sound, at the last note played, to a pad.</li><li>LFO 1, LFO 2 and VEL amounts are set on the knobs themselves; a knob that a source moves shows an arc in its colour.</li><li>Audio Unit instrument for Audio Unit hosts, with the app&#x27;s window. The keyboard&#x27;s knobs can be automated; the pads and the mode are saved with the project.</li><li>The Audio Unit is installed from the app&#x27;s Settings.</li><li>The &quot;Polar Khomus&quot; look: a silver khomus on leather and bone, northern ornament and Liquid Glass panels.</li><li>Presets: save a sound as a preset from the new Preset menu and load it into the keyboard or any pad; a double-click takes a knob back to the preset&#x27;s value. The app and the plug-in share the presets.</li><li>Kits: save all sixteen pads as a kit and load them back from the Kit menu beside the pads, or return to the default kit.</li><li>A pad is named after its preset, or after its program when it has none.</li><li>MIDI controllers: every knob and switch of the keyboard&#x27;s sound follows a MIDI controller, with a standard one ready; the new MIDI button shows them and lets any control learn another with a click.</li><li>The plug-in saves the MIDI controllers, the presets in use and the selected pad with the project, and its window opens on that pad.</li></ul>]]></description>
-      <enclosure url="https://github.com/jiripisa/brumle/releases/download/v0.1.0/Brumle-0.1.0.dmg" type="application/octet-stream" sparkle:edSignature="QWV7ykvzp50cfWM+hapYGVd2ogmjwPSeXlEuK7RJZOy99qiBkQIRXEuuR2qdm0/SmTbNMZG3zD2/I9diK87xAw==" length="12724403"/>
+      <pubDate>Mon, 16 Nov 2026 12:25:21 +0000</pubDate>
+      <description><![CDATA[<ul><li>A new app icon: the silver khomus on dark leather, filling the whole icon tile.</li></ul>]]></description>
+      <enclosure url="https://github.com/jiripisa/brumle/releases/download/v1.0.0/Brumle-1.0.0.dmg" type="application/octet-stream" sparkle:edSignature="NZoHgQvf8MLx6tsIfroRmw8Km6BPHOZarqbwrSxu67o0k9L0HEyUrmBC6q/p8ofxBPdHlaQyz+H6L9oL1CO3BQ==" length="14964769"/>
     </item>
   </channel>
 </rss>
