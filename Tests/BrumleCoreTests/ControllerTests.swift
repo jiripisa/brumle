@@ -281,4 +281,24 @@ struct ControllerTests {
         #expect(Controllers.label(74) == "CC 74")
         #expect(Controllers.label(nil) == "—")
     }
+
+    @Test("Every control on the panel can learn in the keyboard set; a pad's controls and the amounts cannot")
+    func whoLearns() throws {
+        #expect(Self.knobs.allSatisfy { Controllers.canLearn($0, in: .keyboard) })
+        #expect(!Self.knobs.contains { Controllers.canLearn($0, in: .pad(3)) })
+        #expect(!Controllers.canLearn(try knob("lfo1vowel"), in: .keyboard))
+        #expect(!Controllers.canLearn(try knob("velring"), in: .keyboard))
+    }
+
+    @Test("In MIDI mode a control shows its controller, a dash without one, and asks for a control while it listens")
+    func captions() throws {
+        let vowel = try knob("vowel"), ring = try knob("ring")
+        #expect(Controllers.caption(of: vowel, in: .keyboard, controller: 74, learning: nil) == "CC 74")
+        #expect(Controllers.caption(of: vowel, in: .keyboard, controller: nil, learning: nil) == "—")
+        #expect(Controllers.caption(of: vowel, in: .keyboard, controller: 74, learning: vowel) == "move a control")
+        #expect(Controllers.caption(of: vowel, in: .keyboard, controller: 74, learning: ring) == "CC 74")
+        // A pad's set and an amount have no controllers, whatever the keyboard's knob has.
+        #expect(Controllers.caption(of: vowel, in: .pad(0), controller: 74, learning: vowel) == "—")
+        #expect(Controllers.caption(of: try knob("lfo1vowel"), in: .keyboard, controller: nil, learning: nil) == "—")
+    }
 }

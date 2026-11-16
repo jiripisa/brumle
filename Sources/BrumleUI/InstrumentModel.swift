@@ -50,7 +50,8 @@ public protocol InstrumentModel: AnyObject, Observable {
     func padGroup(_ pad: Int) -> Int?
     func setPadGroup(_ group: Int?, pad: Int)
 
-    /// What a pad is called: the name of the program last loaded into it.
+    /// What a pad is called: its preset's name, otherwise the name of the
+    /// program last loaded into it, otherwise "Custom".
     func padName(_ pad: Int) -> String
 
     /// How many times a pad has been hit; the panel flashes the pad when it changes.
@@ -76,6 +77,66 @@ public protocol InstrumentModel: AnyObject, Observable {
     /// Catches up with what changed elsewhere (a host's automation, MIDI, pad
     /// hits). The panel calls it every 40 ms while it is shown.
     func refresh()
+
+    // MARK: Presets: one set's sound as a file
+
+    /// The player's presets, in the order the menu shows them.
+    var presets: [String] { get }
+
+    /// The preset a set's sound came from; nil after a program, and once the
+    /// file is gone.
+    func presetInUse(in set: SoundSet) -> String?
+
+    /// Loads a preset into a set and makes it the set's preset in use.
+    func loadPreset(_ name: String, into set: SoundSet) throws
+
+    /// Saves a set's sound as a preset, replacing a file of that name.
+    func savePreset(as name: String, from set: SoundSet) throws
+
+    /// Moves a preset to the Trash. The sounds stay as they are.
+    func deletePreset(_ name: String) throws
+
+    /// Reads the folders again before a menu opens: another window (the app's,
+    /// or another plug-in's) may have saved or deleted a preset or a kit.
+    func lookAtPresets()
+
+    // MARK: Kits: the sixteen pads as a file
+
+    var kits: [String] { get }
+
+    /// Replaces all sixteen pads with a kit's. The mode and the keyboard set stay.
+    func loadKit(_ name: String) throws
+
+    /// The engine's own kit into all sixteen pads.
+    func loadDefaultKit()
+
+    func saveKit(as name: String) throws
+    func deleteKit(_ name: String) throws
+
+    /// What went wrong with a file the last time, in words, and when; the
+    /// panel shows it for a while under the header. The file methods above
+    /// record it before they throw.
+    var lastError: String? { get }
+    var lastErrorTime: ContinuousClock.Instant? { get }
+
+    // MARK: MIDI controllers on the keyboard set's controls
+
+    /// The controller that moves a control of the keyboard set; nil for none.
+    func controller(of parameter: Parameter) -> Int?
+
+    /// Gives a control a controller, or takes it away (nil). A controller
+    /// serves one control: whoever had it has none afterwards.
+    func setController(_ controller: Int?, of parameter: Parameter)
+
+    /// Every control back to the controller it came with.
+    func resetControllers()
+
+    /// The control that takes the next controller that moves; nil while
+    /// none is listening.
+    var learning: Parameter? { get }
+
+    /// Starts listening for a control, or calls it off (nil).
+    func learn(_ parameter: Parameter?)
 }
 
 public extension InstrumentModel {

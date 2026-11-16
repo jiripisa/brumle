@@ -22,6 +22,21 @@ public enum Controllers {
         controller.map { "CC \($0)" } ?? "—"
     }
 
+    /// Whether a control of a set can have a controller: the keyboard set's knobs and switches.
+    /// A pad's set and the amounts have none.
+    public static func canLearn(_ parameter: Parameter, in set: SoundSet) -> Bool {
+        set == .keyboard && standard(for: parameter) != nil
+    }
+
+    /// What a control shows under its name while the panel shows the controllers: its
+    /// controller, "move a control" while it listens for one, and a dash for none or for a
+    /// control that can have none.
+    public static func caption(of parameter: Parameter, in set: SoundSet, controller: Int?,
+                               learning: Parameter?) -> String {
+        guard canLearn(parameter, in: set) else { return label(nil) }
+        return learning == parameter ? "move a control" : label(controller)
+    }
+
     /// The parameters that can have a controller: the knobs, in table order.
     static let knobs: [Parameter] = Parameters.all.filter { standard(for: $0) != nil }
 }
