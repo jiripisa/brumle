@@ -126,6 +126,10 @@ struct BrumleEngine
         for (int i = 0; i < kNumParams; ++i)
             if (programSets(i)) this->set(set, i, p.values[i]);
     }
+    void setProgramIndex(int set, int index)
+    {
+        if (index >= 0 && index < (int)programs().size()) program_[set].store(index, std::memory_order_relaxed);
+    }
     int program(int set) const { return program_[set].load(std::memory_order_relaxed); }
 
     void setMode(int mode)
@@ -632,6 +636,7 @@ void brumle_set_normalised(BrumleEngine* e, int set, int index, float n)
 }
 void brumle_set_program(BrumleEngine* e, int set, int program) { if (e && validSet(set)) e->setProgram(set, program); }
 int  brumle_get_program(const BrumleEngine* e, int set) { return e && validSet(set) ? e->program(set) : 0; }
+void brumle_set_program_index(BrumleEngine* e, int set, int program) { if (e && validSet(set)) e->setProgramIndex(set, program); }
 void brumle_set_mode(BrumleEngine* e, int mode) { if (e) e->setMode(mode); }
 int  brumle_get_mode(const BrumleEngine* e) { return e ? e->mode() : BRUMLE_MODE_KEYBOARD; }
 

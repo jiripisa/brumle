@@ -221,6 +221,24 @@ struct EngineTests: EngineHarness {
         #expect(brumle_get_normalised(engine, 16, ring) == 0.25)
     }
 
+    @Test("Recording a set's program changes no knob")
+    func programIndexOnly() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        let ring = Self.index("ring")
+        brumle_set_plain(engine, 4, ring, 1)
+        brumle_set_program_index(engine, 4, 2)
+        #expect(brumle_get_program(engine, 4) == 2)
+        #expect(abs(brumle_get_plain(engine, 4, ring) - 1) < 1e-5)
+        brumle_set_program_index(engine, 4, -1)
+        brumle_set_program_index(engine, 4, brumle_num_programs())
+        #expect(brumle_get_program(engine, 4) == 2)
+        brumle_set_program_index(engine, -1, 1)
+        brumle_set_program_index(engine, 17, 1)
+        brumle_set_program_index(nil, 0, 1)
+        #expect(brumle_get_program(engine, Self.keyboard) == 0)
+    }
+
     @Test("The C interface tolerates a null engine and indices out of range")
     func outOfRange() {
         let engine = makeEngine()

@@ -60,9 +60,9 @@ Float64 longestRing()
 }
 
 // ----- the pads in the saved state ----------------------------------------------------------
-// The base class saves the unit's parameters (the keyboard set). The pads and the mode ride
-// along under a key of their own:
-//   "brumle-pads": { "mode": int,
+// The base class saves the unit's parameters (the keyboard set). The program the keyboard set
+// last loaded, the pads and the mode ride along under a key of their own:
+//   "brumle-pads": { "mode": int, "keyboardProgram": int,
 //                    "pads": [ 16 × { "note": int, "group": int (0 = Off), "program": int,
 //                                     "values": data: Float32 plain values by parameter index } ] }
 
@@ -280,6 +280,7 @@ public:
         if (status != noErr || !outData || !*outData || CFGetTypeID(*outData) != CFDictionaryGetTypeID()) return status;
         CFMutableDictionaryRef pads = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         setInt(pads, CFSTR("mode"), brumle_get_mode(engine_));
+        setInt(pads, CFSTR("keyboardProgram"), brumle_get_program(engine_, BRUMLE_KEYBOARD_SET));
         CFMutableArrayRef list = CFArrayCreateMutable(nullptr, BRUMLE_NUM_PADS, &kCFTypeArrayCallBacks);
         for (int pad = 0; pad < BRUMLE_NUM_PADS; ++pad)
         {
@@ -296,7 +297,9 @@ public:
     }
 
     // State without the pads leaves them alone (the default kit); a shorter list of pads leaves
-    // the rest alone.
+    // the rest alone. Whatever is missing or of the wrong type is left as it is. The keyboard
+    // set's values came with the base class's parameters: of its program only the number is put
+    // back, so that a reset to the program's value finds the right program.
     OSStatus RestoreState(CFPropertyListRef plist) override
     {
         const OSStatus status = Base::RestoreState(plist);
@@ -307,6 +310,8 @@ public:
 
         int mode = 0;
         if (getInt(pads, CFSTR("mode"), mode)) brumle_set_mode(engine_, mode);
+        int program = 0;
+        if (getInt(pads, CFSTR("keyboardProgram"), program)) brumle_set_program_index(engine_, BRUMLE_KEYBOARD_SET, program);
         const void* list = CFDictionaryGetValue(pads, CFSTR("pads"));
         if (!list || CFGetTypeID(list) != CFArrayGetTypeID()) return status;
         const auto array = static_cast<CFArrayRef>(list);

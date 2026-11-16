@@ -125,6 +125,16 @@ private final class Instrument {
         }
     }
 
+    /// Chooses a factory preset (a program), as a host's preset menu does.
+    func loadPreset(_ number: Int) throws {
+        let name = Programs.names[number] as CFString
+        var preset = AUPreset(presetNumber: Int32(number), presetName: Unmanaged.passUnretained(name))
+        try withExtendedLifetime(name) {
+            try #require(AudioUnitSetProperty(unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0,
+                                              &preset, UInt32(MemoryLayout<AUPreset>.size)) == noErr)
+        }
+    }
+
     func float64Property(_ id: AudioUnitPropertyID) throws -> Float64 {
         var value: Float64 = -1
         var size = UInt32(MemoryLayout<Float64>.size)
@@ -226,11 +236,7 @@ struct AudioUnitTests {
         try instrument.setParameter("octave", to: 1)
         _ = try instrument.render()
 
-        var preset = AUPreset(presetNumber: 2, presetName: Unmanaged.passUnretained(Programs.names[2] as CFString))
-        try withExtendedLifetime(Programs.names[2]) {
-            try #require(AudioUnitSetProperty(instrument.unit, kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0,
-                                              &preset, UInt32(MemoryLayout<AUPreset>.size)) == noErr)
-        }
+        try instrument.loadPreset(2)
         _ = try instrument.render()
 
         var present = AUPreset()
@@ -311,6 +317,68 @@ struct AudioUnitTests {
                 #expect(other.value(of: parameter, in: .pad(3)) == parameter.defaultValue, "\(parameter.identifier)")
             }
         }
+    }
+
+    @Test("A reopened project keeps the keyboard's program, so a reset goes to that program's value")
+    func stateKeepsTheKeyboardProgram() throws {
+        let saved = try Instrument()
+        try saved.loadPreset(3)                                 // Morsing: Ring 1 s
+        try saved.setParameter("buzz", to: 55)
+        _ = try saved.render()
+        let state = try saved.classInfo()
+
+        let restored = try Instrument()
+        let other = Synth(borrowing: try restored.engine())
+        try restored.restore(state)
+        _ = try restored.render()
+        let ring = try #require(Parameters.named("ring")), buzz = try #require(Parameters.named("buzz"))
+        #expect(other.program(in: .keyboard) == 3)
+        #expect(try restored.parameter(buzz.index) == 55)       // the values are the project's, not the program's
+        #expect(abs(other.value(of: buzz, in: .keyboard) - 55) < 0.001)
+        #expect(Programs.value(program: other.program(in: .keyboard), parameter: ring) == 1)
+
+        // A state without the key leaves the index alone.
+        var older = try #require(state as? [String: Any])
+        var pads = try #require(older["brumle-pads"] as? [String: Any])
+        #expect(pads["keyboardProgram"] as? Int == 3)
+        pads["keyboardProgram"] = nil
+        older["brumle-pads"] = pads
+        let another = try Instrument()
+        try another.loadPreset(5)
+        try another.restore(older as CFDictionary)
+        #expect(brumle_get_program(try another.engine(), Int32(BRUMLE_KEYBOARD_SET)) == 5)
+    }
+
+    @Test("Saved state of the wrong shape is ignored, part by part")
+    func stateOfTheWrongShape() throws {
+        let saved = try Instrument()
+        let state = try #require(try saved.classInfo() as? [String: Any])
+        let restored = try Instrument()
+        let synth = Synth(borrowing: try restored.engine())
+        let before = synth.state
+
+        var pads = try #require(state["brumle-pads"] as? [String: Any])
+        var list = try #require(pads["pads"] as? [Any])
+        list[0] = 42                                                        // not a pad
+        list[1] = ["note": "C3", "group": 2.5, "program": [1], "values": "loud"] as [String: Any]
+        list[2] = ["values": Data([0x01, 0x02, 0x03])] as [String: Any]     // shorter than one value
+        list.append(["note": 70] as [String: Any])                          // a 17th pad
+        pads["pads"] = list
+        pads["mode"] = "pads"
+        pads["keyboardProgram"] = Data([3])
+        var wrong = state
+        wrong["brumle-pads"] = pads
+        try restored.restore(wrong as CFDictionary)
+        #expect(synth.state == before)
+
+        for shape: Any in [7, "pads", [1, 2]] {
+            wrong["brumle-pads"] = shape
+            try restored.restore(wrong as CFDictionary)
+        }
+        pads["pads"] = ["pad": 1]
+        wrong["brumle-pads"] = pads
+        try restored.restore(wrong as CFDictionary)
+        #expect(synth.state == before)
     }
 
     @Test("Telling the unit its pads changed tells the host its saved state changed")

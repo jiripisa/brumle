@@ -97,6 +97,9 @@ void  brumle_set_normalised(BrumleEngine*, int set, int index, float n);
 // belongs to the player's hands, not to the sound.
 void  brumle_set_program(BrumleEngine*, int set, int program);
 int   brumle_get_program(const BrumleEngine*, int set);
+// Records which program a set last loaded without loading it: no knob changes. For restoring saved
+// state whose knob values come from elsewhere. A bad set or program is ignored.
+void  brumle_set_program_index(BrumleEngine*, int set, int program);
 
 // The mode: the keyboard plays the keyboard set at the pitch of each key; the pads play their
 // own sets at the pitch of each pad, hit by notes 36-51 (other notes are ignored). A voice
