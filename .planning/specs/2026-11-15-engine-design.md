@@ -97,6 +97,8 @@ slot   u = Edge * x + Offset (+ Clang: a term at 6.27 x the reed's phase, decayi
        v = -dir * a * sin(phase)                         (speed as a share of a full stroke)
        b = 0.5 * Breath + 0.5 * puff(t)                  (puff: Puff * velocity, Puff Time)
        burst = (1 - tanh²(u)) * (v + b) * |v + b|  + Air noise through the same gate
+       Air noise fades with the reed once it is 20 dB down; the breath bias fades over the
+       reed's last 40 dB before the voice retires (2026-11-16, author's ear)
 mouth  Vowel resonance (moving: Vowel, Sweep, Sweep Time, Curve, Reso; Close shuts it)
      + Throat resonance (Throat, Throat Tune, Open: wider and higher when open)
      + fixed high resonance near 2.8 kHz
@@ -277,6 +279,14 @@ the same score at 96 kHz.
   generators exactly, the stricter match holds throughout **[builder]**.
 
 The prototype's renders are thereby also the first entries of `SoundRegressionTests`.
+
+**Amended 2026-11-16 (author's ear).** The bar is the prototype as amended on 2026-11-16:
+the author heard hiss in long tails, so Air noise and the breath bias now fade with the reed
+(§5), in the prototype, in the test suite's copy of it and in the engine alike. The amended
+prototype renders the approved sounds bit for bit until the reed is 20 dB down, which is about
+Ring / 3 after the hit: 1.33 s at the default Ring of 4 s, 1.0 s for Đàn Môi, 0.33 s for Morsing
+and Bamboo, 0.27 s for Genggong. From there on its tails are quieter than the 39 approved
+renders. The author approved re-renders made with the amendment by ear (2026-11-16).
 
 ## 9. Architecture (Didgeridoo's, with these changes)
 
