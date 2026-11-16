@@ -100,8 +100,10 @@ public final class Synth: @unchecked Sendable {
         Int(brumle_get_program(engine, set.index))
     }
 
-    /// Loads a built-in program into a set: every parameter but the octave is overwritten.
+    /// Loads a built-in program into a set: every parameter but the octave is overwritten. A
+    /// number that is no program is ignored.
     public func loadProgram(_ index: Int, into set: SoundSet = .keyboard) {
+        guard Programs.names.indices.contains(index) else { return }
         brumle_set_program(engine, set.index, Int32(index))
     }
 
@@ -118,9 +120,10 @@ public final class Synth: @unchecked Sendable {
         return Int(brumle_pad_note(engine, index))
     }
 
+    /// A note outside 0...127 is ignored: the pad keeps its pitch.
     public func setPadNote(_ note: Int, pad: Int) {
-        guard let index = Self.padIndex(pad) else { return }
-        brumle_set_pad_note(engine, index, Int32(Self.dataByte(note)))
+        guard let index = Self.padIndex(pad), (0...127).contains(note) else { return }
+        brumle_set_pad_note(engine, index, Int32(note))
     }
 
     /// The mute group of a pad, 1...16; nil for Off, and for a pad outside 0...15.
@@ -130,9 +133,11 @@ public final class Synth: @unchecked Sendable {
         return group > 0 ? group : nil
     }
 
+    /// A group outside 1...16 means Off.
     public func setPadGroup(_ group: Int?, pad: Int) {
         guard let index = Self.padIndex(pad) else { return }
-        brumle_set_pad_group(engine, index, Int32(group ?? 0))
+        let valid = group.flatMap { (1...16).contains($0) ? $0 : nil }
+        brumle_set_pad_group(engine, index, Int32(valid ?? 0))
     }
 
     /// How many times a pad has been hit since the engine was created, counted on the audio

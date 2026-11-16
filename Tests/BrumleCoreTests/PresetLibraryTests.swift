@@ -155,8 +155,9 @@ struct PresetLibraryTests {
         #expect(shelf.names == ["Mine"] && shelf.inUse == "Mine")
         #expect(shelf.value(of: try vowel()) == 777)
         #expect(try library.load("Mine").preset == "Mine")
+        var attempt = shelf
         let set = try sound()
-        do { try shelf.save(set, as: " ") } catch { #expect(error as? PresetError == .noName) }
+        #expect(throws: PresetError.noName) { try attempt.save(set, as: " ") }
         #expect(shelf.inUse == "Mine")
     }
 
@@ -168,9 +169,8 @@ struct PresetLibraryTests {
         var shelf = PresetShelf(library: library, inUse: nil)
         let loaded = try shelf.load("mine")
         #expect(loaded.preset == "Mine" && shelf.inUse == "Mine")
-        do { _ = try shelf.load("Nope"); Issue.record("loaded a preset that is not there") } catch {
-            #expect(error as? PresetError == .missing("Nope"))
-        }
+        var attempt = shelf
+        #expect(throws: PresetError.missing("Nope")) { try attempt.load("Nope") }
         #expect(shelf.inUse == "Mine")
     }
 

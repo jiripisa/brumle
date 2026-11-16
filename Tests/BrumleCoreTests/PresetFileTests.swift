@@ -55,4 +55,51 @@ struct PresetFileTests {
         #expect(PresetError.missing("X").errorDescription?.contains("“X”") == true)
         #expect(PresetError.unreadable("X").errorDescription?.contains("damaged") == true)
     }
+
+    @Test("A program number out of range, from a file, is ignored: the set keeps its program and the missing knobs take its values")
+    func badProgram() throws {
+        for bad in [3_000_000_000, -1, 999] {
+            let synth = Synth(sampleRate: 48_000)
+            synth.loadProgram(2)
+            let ring = try #require(Parameters.named("ring"))
+            synth.setValue(1.5, of: ring)
+            let set = try JSONDecoder().decode(SetState.self, from: Data(#"{"program":\#(bad),"values":{"vowel":600}}"#.utf8))
+            synth.apply(set, to: .keyboard)
+            #expect(synth.program() == 2, "program \(bad)")
+            #expect(abs(synth.value(of: ring) - Programs.value(program: 2, parameter: ring)) < 1e-4, "program \(bad)")
+            #expect(abs(synth.value(of: try #require(Parameters.named("vowel"))) - 600) < 1)
+
+            let kit = try JSONDecoder().decode(Kit.self, from: Data(#"{"pads":[{"set":{"program":\#(bad)}}]}"#.utf8))
+            synth.apply(kit)
+            #expect(synth.program(in: .pad(0)) >= 0)
+        }
+        #expect(Programs.value(program: 3_000_000_000, parameter: try #require(Parameters.named("ring"))) == (try #require(Parameters.named("ring"))).defaultValue)
+        Synth(sampleRate: 48_000).loadProgram(3_000_000_000)
+    }
+
+    @Test("A pad's group outside 1...16 means Off and a note outside 0...127 is ignored, whoever asks")
+    func badPad() throws {
+        let synth = Synth(sampleRate: 48_000)
+        synth.setPadNote(60, pad: 1)
+        synth.setPadGroup(4, pad: 1)
+        for group in [9_999_999_999, -3, 17, 0] {
+            synth.setPadGroup(group, pad: 1)
+            #expect(synth.padGroup(1) == nil, "group \(group)")
+        }
+        for note in [9_999_999_999, -1, 128] {
+            synth.setPadNote(note, pad: 1)
+            #expect(synth.padNote(1) == 60, "note \(note)")
+        }
+        let kit = try JSONDecoder().decode(Kit.self, from: Data(#"{"pads":[{"group":9999999999,"note":9999999999},{"group":-5,"note":-2}]}"#.utf8))
+        synth.setPadNote(50, pad: 0)
+        synth.apply(kit)
+        #expect(synth.padGroup(0) == nil && synth.padGroup(1) == nil)
+        #expect(synth.padNote(0) == 50)
+    }
+
+    @Test("Control characters are stripped from a name")
+    func controlCharacters() {
+        #expect(PresetLibrary.cleaned("a\u{0}b\u{7}c") == "abc")
+        #expect(PresetLibrary.cleaned("\u{0}") == nil)
+    }
 }

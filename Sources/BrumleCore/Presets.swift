@@ -58,7 +58,8 @@ public struct FileLibrary<Content: Codable & Sendable>: Sendable {
     /// (the Finder hides such files), not longer than `longestName`. nil when nothing is left.
     public static func cleaned(_ name: String) -> String? {
         let spaces = CharacterSet.whitespacesAndNewlines
-        var cleaned = String(name.map { character -> Character in
+        var cleaned = String(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) || $0 == "\t" || $0 == "\n" || $0 == "\r" }
+            .map(Character.init).map { character -> Character in
             if character == "/" || character == ":" { return "-" }
             return character.isNewline || character == "\t" ? " " : character
         }).trimmingCharacters(in: spaces)
@@ -84,12 +85,24 @@ public struct FileLibrary<Content: Codable & Sendable>: Sendable {
         guard let name = Self.cleaned(name) else { throw PresetError.noName }
         let files = FileManager.default
         try files.createDirectory(at: folder, withIntermediateDirectories: true)
-        if let old = spelling(of: name), old != name {
-            try files.removeItem(at: file(of: old))         // the same name with other capitals
-        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(content).write(to: file(of: name), options: .atomic)
+        let data = try encoder.encode(content)
+        guard let old = spelling(of: name), old != name else {
+            try data.write(to: file(of: name), options: .atomic)
+            return name
+        }
+        // The same name with other capitals (one file on a case-insensitive disk): write the new
+        // content aside first, and only when that has worked take the old spelling's file away.
+        let aside = folder.appendingPathComponent(".saving-\(UUID().uuidString)")
+        try data.write(to: aside, options: .atomic)
+        do {
+            try files.removeItem(at: file(of: old))
+            try files.moveItem(at: aside, to: file(of: name))
+        } catch {
+            try? files.removeItem(at: aside)
+            throw error
+        }
         return name
     }
 

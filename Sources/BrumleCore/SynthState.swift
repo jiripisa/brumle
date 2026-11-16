@@ -116,9 +116,11 @@ extension Synth {
     /// mention takes the program's value (the octave too, which loading a program leaves alone).
     /// The set's `preset` is not the engine's to keep: the models remember it.
     public func apply(_ saved: SetState, to set: SoundSet) {
-        if saved.program != program(in: set) { loadProgram(saved.program, into: set) }
+        // A program number that is no program (a damaged or newer file) leaves the set's own.
+        let program = Programs.names.indices.contains(saved.program) ? saved.program : self.program(in: set)
+        if program != self.program(in: set) { loadProgram(program, into: set) }
         for parameter in Parameters.all where saved.values[parameter.identifier] == nil {
-            setValue(Programs.value(program: saved.program, parameter: parameter), of: parameter, in: set)
+            setValue(Programs.value(program: program, parameter: parameter), of: parameter, in: set)
         }
         for (identifier, plain) in saved.values {
             if let parameter = Parameters.named(identifier) { setValue(plain, of: parameter, in: set) }
