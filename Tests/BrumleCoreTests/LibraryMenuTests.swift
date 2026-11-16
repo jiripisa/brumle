@@ -35,8 +35,8 @@ struct LibraryMenuTests {
     @Test("The Kit menu: the kits, then Default kit, Save kit as… and Delete kit")
     func kitMenu() {
         #expect(LibraryMenu.kits(["Live", "Studio"]) == [
-            .file("Live", ticked: false),
-            .file("Studio", ticked: false),
+            .file("Live", ticked: nil),
+            .file("Studio", ticked: nil),
             .divider,
             .standard("Default kit"),
             .save("Save kit as…"),
@@ -76,6 +76,16 @@ struct LibraryMenuTests {
         #expect(check == .replaces("Bright"))
         #expect(check.canSave)
         #expect(check.question == "Replace “Bright”?")
+    }
+
+    @Test("What is saved is the name as cleaned, in the capitals typed; presets and kits share the rule")
+    func savedName() {
+        #expect(NameCheck.cleaned("  low/drone ") == "low-drone")
+        #expect(NameCheck.cleaned(" . ") == nil)
+        for typed in ["  low/drone ", "a:b", ".hidden", String(repeating: "x", count: 70), "\tTab"] {
+            #expect(KitLibrary.cleaned(typed) == PresetLibrary.cleaned(typed))
+            #expect(NameCheck.cleaned(typed) == PresetLibrary.cleaned(typed))
+        }
     }
 
     @Test("A name longer than a file can carry is cut, then compared")

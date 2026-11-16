@@ -103,9 +103,10 @@ struct NameSheetView: View {
         }
     }
 
+    /// Saves under the name as cleaned: the one `check` judged, in the capitals typed.
     private func finish() {
-        guard !saved, check.canSave else { return }
+        guard !saved, check.canSave, let cleaned = NameCheck.cleaned(name) else { return }
         saved = true
-        save(name)
+        save(cleaned)
     }
 }

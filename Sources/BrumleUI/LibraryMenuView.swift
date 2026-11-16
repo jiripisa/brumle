@@ -66,8 +66,10 @@ struct LibraryMenuView<Label: View>: View {
     @ViewBuilder
     private func entry(_ entry: LibraryMenu.Entry) -> some View {
         switch entry {
-        case .file(let name, let ticked):
+        case .file(let name, let ticked?):
             Toggle(name, isOn: Binding(get: { ticked }, set: { _ in try? library.load(name) }))
+        case .file(let name, nil):
+            Button(name) { try? library.load(name) }
         case .standard(let title):
             Button(title, action: library.loadStandard)
         case .divider:
@@ -101,7 +103,7 @@ struct LibraryMenuFiles {
 }
 
 /// What Delete asks before a file goes: "Delete “Bright”? It goes to the
-/// Trash." with Cancel and Delete.
+/// Trash." with Cancel (Return) and Delete. Esc closes the popover.
 struct DeleteQuestionView: View {
 
     let name: String
@@ -117,10 +119,10 @@ struct DeleteQuestionView: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
+                // Return keeps the file: deleting takes a click.
                 Button("Cancel", action: cancel)
-                    .keyboardShortcut(.cancelAction)
-                Button("Delete", role: .destructive, action: delete)
                     .keyboardShortcut(.defaultAction)
+                Button("Delete", role: .destructive, action: delete)
             }
         }
         .padding(14)

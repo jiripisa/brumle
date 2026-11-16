@@ -4,8 +4,9 @@
 public enum LibraryMenu {
 
     public enum Entry: Equatable, Sendable {
-        /// A file. Ticked while it is the preset in use of the set the panel shows.
-        case file(String, ticked: Bool)
+        /// A file. Ticked while it is the preset in use of the set the panel shows; nil for a
+        /// file that is never ticked (a kit), which the menu shows without a tick column.
+        case file(String, ticked: Bool?)
         /// The engine's own sound instead of a file's: "Default kit".
         case standard(String)
         case divider
@@ -26,7 +27,7 @@ public enum LibraryMenu {
     /// The kits (none is "in use": a kit's pads are edited one by one); then the engine's kit,
     /// Save kit as…, and Delete kit when there is a kit to delete.
     public static func kits(_ names: [String]) -> [Entry] {
-        let files = names.map { Entry.file($0, ticked: false) }
+        let files = names.map { Entry.file($0, ticked: nil) }
         return files + commands(after: files, [.standard("Default kit"), .save("Save kit as…")],
                                 delete: "Delete kit", names: names)
     }
@@ -53,7 +54,7 @@ public enum NameCheck: Equatable, Sendable {
     case replaces(String)
 
     public init(_ typed: String, among names: [String]) {
-        guard let cleaned = PresetLibrary.cleaned(typed) else {
+        guard let cleaned = Self.cleaned(typed) else {
             self = .unusable
             return
         }
@@ -65,6 +66,13 @@ public enum NameCheck: Equatable, Sendable {
     }
 
     public var canSave: Bool { self != .unusable }
+
+    /// A name as a file will carry it, the one this check judges; nil when nothing is left.
+    /// Presets and kits share the rule (`FileLibrary.cleaned` does not depend on what a file
+    /// holds).
+    public static func cleaned(_ typed: String) -> String? {
+        PresetLibrary.cleaned(typed)
+    }
 
     /// What the popover asks before it replaces a file; nil when nothing is replaced.
     public var question: String? {

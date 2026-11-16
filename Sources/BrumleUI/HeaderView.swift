@@ -152,8 +152,11 @@ struct HeaderView<Trailing: View>: View {
         }
     }
 
-    /// A button that turns the knobs into a source's amounts and back: its
-    /// colour as a dot, the glass tinted with it while it is on.
+    /// A button that turns the knobs into a source's amounts (or their
+    /// controllers) and back: its colour as a dot, and filled with it while it
+    /// is on. The fill sits under the glass rather than tinting it: a tint
+    /// turns grey in a window that is not in front (a plug-in's, in a host),
+    /// and icy silver read as switched off.
     private func sourceButton(_ title: String, _ source: KnobEditing, help: String) -> some View {
         let on = editing == source
         return Button {
@@ -169,7 +172,8 @@ struct HeaderView<Trailing: View>: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .contentShape(Capsule())
-            .glassEffect(on ? .regular.tint(source.colour).interactive() : .regular.interactive(), in: .capsule)
+            .background(on ? source.colour : Color.clear, in: Capsule())
+            .glassEffect(.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
         .help(on ? "Back to the knobs" : help)
