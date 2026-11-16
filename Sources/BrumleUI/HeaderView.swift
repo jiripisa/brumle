@@ -4,11 +4,13 @@ import BrumleCore
 /// The top of the panel: the emblem and the wordmark, the Program menu (it
 /// loads into the set the knobs show), the mode switch (Keyboard | Pads) and
 /// the buttons LFO 1, LFO 2 and VEL, which turn the knobs into that source's
-/// amounts. Room is left for the Preset menu and the MIDI button.
-struct HeaderView: View {
+/// amounts. Room is left for the Preset menu and the MIDI button. `trailing`
+/// comes last, on the right.
+struct HeaderView<Trailing: View>: View {
 
     let model: any InstrumentModel
     @Binding var editing: KnobEditing
+    let trailing: Trailing
 
     var body: some View {
         HStack(spacing: 14) {
@@ -29,6 +31,7 @@ struct HeaderView: View {
                 }
                 sourceButton("VEL", .velocity, help: "Drag the knobs to set how far a softer hit moves them")
             }
+            trailing
         }
         .frame(height: 48)
     }
