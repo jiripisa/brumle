@@ -70,6 +70,7 @@ let package = Package(
             name: "Brumle",
             dependencies: [
                 "BrumleCore",
+                "BrumleUI",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/Brumle",

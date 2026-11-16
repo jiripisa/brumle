@@ -1,19 +1,47 @@
 import AppKit
 import SwiftUI
-import BrumleCore
+import BrumleUI
 
+/// The app's window: the instrument's panel with the keyboard or the pads
+/// below it, and the settings behind the gear in its header.
 struct ContentView: View {
+
+    let model: AppModel
+    @State private var showingSettings = false
+
     var body: some View {
-        VStack(spacing: 12) {
-            Image(nsImage: NSApplication.shared.applicationIconImage)
-                .resizable()
-                .frame(width: 96, height: 96)
-            Text(BrumleCore.greeting(appName: "Brumle"))
-                .font(.title)
-            Text("A playable synthesized jaw harp: twang, moving overtones, breath and rhythm, as an Audio Unit and a standalone app.")
-                .foregroundStyle(.secondary)
+        InstrumentPanel(model: model) {
+            ModeFooterView(model: model)
+        } trailing: {
+            settingsButton
         }
-        .padding(40)
-        .frame(minWidth: 640, minHeight: 400)
+        .fixedSize()                    // the panel's width, as tall as its contents
+        .instrumentBackground()
+        .sheet(isPresented: $showingSettings) { SettingsView(model: model) }
+        // A key or pad held with the mouse would sound on: the mouse-up goes elsewhere.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            model.releaseHeld()
+        }
+        .onDisappear {
+            model.releaseHeld()
+            model.saveIfEdited()
+        }
+    }
+
+    private var settingsButton: some View {
+        Button {
+            showingSettings = true
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Artwork.silver)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Capsule())
+                .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .help("MIDI input, audio output and the Audio Unit")
+        .accessibilityLabel("Settings")
     }
 }
