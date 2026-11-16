@@ -547,6 +547,7 @@ struct EngineTests: EngineHarness {
         }
         out += padOut
         #expect(mostSounding <= Int32(BRUMLE_MAX_VOICES), "\(rate) Hz: \(mostSounding) voices sounded")
+        #expect(mostSounding == Int32(BRUMLE_MAX_VOICES), "\(rate) Hz: the pool was never full")
         #expect(out.allSatisfy { $0.isFinite }, "\(rate) Hz: NaN or Inf")
     }
 

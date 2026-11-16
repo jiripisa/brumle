@@ -11,6 +11,7 @@ struct ThreadTests {
     private final class Control: Sendable {
         let stop = Mutex(false)
         let operations = Atomic<Int>(0)
+        let finished = DispatchSemaphore(value: 0)
     }
 
     /// A small deterministic generator: the control thread's choices repeat from run to run.
@@ -47,13 +48,15 @@ struct ThreadTests {
                 }
                 control.operations.add(1, ordering: .relaxed)
             }
+            control.finished.signal()
         }
         thread.start()
         while control.operations.load(ordering: .relaxed) < 50 { Thread.sleep(forTimeInterval: 0.001) }
+        let before = control.operations.load(ordering: .relaxed)
 
         var left = [Float](repeating: 0, count: block), right = [Float](repeating: 0, count: block)
         var finite = true, loud = false
-        for _ in 0..<Int(4 * rate) / block {
+        for _ in 0..<Int(1 * rate) / block {
             left.withUnsafeMutableBufferPointer { l in
                 right.withUnsafeMutableBufferPointer { r in
                     synth.render(left: l.baseAddress!, right: r.baseAddress!, frames: block)
@@ -62,9 +65,11 @@ struct ThreadTests {
             finite = finite && left.allSatisfy { $0.isFinite } && right.allSatisfy { $0.isFinite }
             loud = loud || left.contains { $0 != 0 }
         }
+        let during = control.operations.load(ordering: .relaxed) - before
         control.stop.withLock { $0 = true }
+        control.finished.wait()                 // the control thread has ended
         #expect(finite, "NaN or Inf while the controls changed")
         #expect(loud, "the test heard nothing")
-        #expect(control.operations.load(ordering: .relaxed) >= 50)
+        #expect(during >= 50, "the control thread made only \(during) changes while audio rendered")
     }
 }
