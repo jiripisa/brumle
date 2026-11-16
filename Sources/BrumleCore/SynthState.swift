@@ -82,7 +82,8 @@ extension Synth {
         Float(String(format: "%.6g", Double(plain))) ?? plain
     }
 
-    private func setState(_ set: SoundSet) -> SetState {
+    /// One set's knobs as they are now, with no preset: the models remember that.
+    public func state(of set: SoundSet) -> SetState {
         SetState(program: program(in: set),
                  values: Dictionary(uniqueKeysWithValues: Parameters.all.map {
                      ($0.identifier, Self.stable(value(of: $0, in: set)))
@@ -93,9 +94,9 @@ extension Synth {
     /// mix values from different moments.
     public var state: SynthState {
         SynthState(mode: mode,
-                   keyboard: setState(.keyboard),
+                   keyboard: state(of: .keyboard),
                    pads: (0..<Int(BRUMLE_NUM_PADS)).map { pad in
-                       PadState(note: padNote(pad) ?? 0, group: padGroup(pad), set: setState(.pad(pad)))
+                       PadState(note: padNote(pad) ?? 0, group: padGroup(pad), set: state(of: .pad(pad)))
                    })
     }
 
@@ -124,6 +125,40 @@ extension Synth {
         }
         for (identifier, plain) in saved.values {
             if let parameter = Parameters.named(identifier) { setValue(plain, of: parameter, in: set) }
+        }
+    }
+}
+
+extension SetState {
+
+    /// Every knob's plain value as `Synth.apply(_:to:)` puts the set in, by parameter index, with
+    /// the program it loads: the set's own values, kept within each knob's range and on the steps
+    /// of integers and choices, and the program's value for a knob the set does not mention. A
+    /// program number that is no program leaves `currentProgram`. For a set that goes in value by
+    /// value from outside the engine: the plug-in window sets the keyboard's as the unit's
+    /// parameters, so that a host hears of each.
+    public func resolved(currentProgram: Int) -> (program: Int, values: [Float]) {
+        let program = Programs.names.indices.contains(self.program) ? self.program : currentProgram
+        let values = Parameters.all.map { parameter -> Float in
+            guard let plain = values[parameter.identifier], plain.isFinite else {
+                return Programs.value(program: program, parameter: parameter)
+            }
+            let stepped = parameter.kind == .continuous ? plain : plain.rounded()
+            return min(max(stepped, parameter.range.lowerBound), parameter.range.upperBound)
+        }
+        return (program, values)
+    }
+}
+
+extension SynthState {
+
+    /// The preset each set came from: the keyboard's first, then the pads' in order; nil for
+    /// none. Setting it names as many pads as the state has and ignores the rest.
+    public var presetNames: [String?] {
+        get { [keyboard.preset] + pads.map(\.set.preset) }
+        set {
+            keyboard.preset = newValue.first ?? nil
+            for (pad, name) in newValue.dropFirst().prefix(pads.count).enumerated() { pads[pad].set.preset = name }
         }
     }
 }

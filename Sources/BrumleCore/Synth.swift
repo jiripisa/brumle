@@ -107,6 +107,13 @@ public final class Synth: @unchecked Sendable {
         brumle_set_program(engine, set.index, Int32(index))
     }
 
+    /// Records which built-in program a set came from without loading it: no knob moves. For a set
+    /// whose values are put in from elsewhere. A number that is no program is ignored.
+    public func recordProgram(_ index: Int, in set: SoundSet = .keyboard) {
+        guard Programs.names.indices.contains(index) else { return }
+        brumle_set_program_index(engine, set.index, Int32(index))
+    }
+
     // MARK: Mode and pads
 
     public var mode: PlayMode {
