@@ -60,6 +60,12 @@ let package = Package(
             dependencies: ["BrumleDSP"],
             path: "Sources/BrumleCore"
         ),
+        // The instrument's panel, the same in the app's window and in the plug-in's.
+        .target(
+            name: "BrumleUI",
+            dependencies: ["BrumleCore"],
+            path: "Sources/BrumleUI"
+        ),
         .executableTarget(
             name: "Brumle",
             dependencies: [
