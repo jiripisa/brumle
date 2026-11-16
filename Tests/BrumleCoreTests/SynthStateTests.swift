@@ -92,6 +92,68 @@ struct SynthStateTests {
         #expect(synth.mode == .keyboard && synth.padNote(1) == 99)
     }
 
+    /// A state as saved JSON, changed by hand the way an older or a newer version would have
+    /// written it, and read back.
+    private func decode(_ state: SynthState, changing change: (inout [String: Any]) throws -> Void) throws -> SynthState {
+        var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as? [String: Any])
+        try change(&object)
+        return try JSONDecoder().decode(SynthState.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+
+    @Test("A saved state without the mode reads as keyboard mode and keeps the rest")
+    func decodesWithoutMode() throws {
+        let synth = Synth(sampleRate: 48_000)
+        synth.mode = .pads
+        synth.setPadNote(70, pad: 4)
+        let saved = synth.state
+
+        let loaded = try decode(saved) { $0["mode"] = nil }
+        #expect(loaded.mode == .keyboard)
+        #expect(loaded.keyboard == saved.keyboard)
+        #expect(loaded.pads == saved.pads)
+    }
+
+    @Test("A field this version does not know is ignored, at every level")
+    func decodesWithUnknownFields() throws {
+        let saved = Synth(sampleRate: 48_000).state
+        let loaded = try decode(saved) { object in
+            object["kitName"] = "From the future"
+            var keyboard = try #require(object["keyboard"] as? [String: Any])
+            keyboard["midiMappings"] = [1, 2, 3]
+            object["keyboard"] = keyboard
+            var pads = try #require(object["pads"] as? [[String: Any]])
+            pads[2]["colour"] = "aurora"
+            object["pads"] = pads
+        }
+        #expect(loaded == saved)
+    }
+
+    @Test("A pad saved without its group reads as Off and keeps its note and sound")
+    func decodesPadWithoutGroup() throws {
+        let synth = Synth(sampleRate: 48_000)
+        synth.setPadGroup(5, pad: 3)
+        let saved = synth.state
+
+        let loaded = try decode(saved) { object in
+            var pads = try #require(object["pads"] as? [[String: Any]])
+            pads[3]["group"] = nil
+            object["pads"] = pads
+        }
+        #expect(loaded.pads[3].group == nil)
+        #expect(loaded.pads[3].note == saved.pads[3].note)
+        #expect(loaded.pads[3].set == saved.pads[3].set)
+        #expect(loaded.pads[4] == saved.pads[4])
+    }
+
+    @Test("Every field may be missing: each gets its default")
+    func decodesEmptyParts() throws {
+        let empty = try JSONDecoder().decode(SynthState.self, from: Data(#"{"pads": [{"set": {}}, {}]}"#.utf8))
+        let noSet = SetState(program: 0, values: [:])
+        #expect(empty == SynthState(mode: .keyboard, keyboard: noSet,
+                                    pads: [PadState(note: 36, group: nil, set: noSet),
+                                           PadState(note: 36, group: nil, set: noSet)]))
+    }
+
     @Test("The mode is saved as its number")
     func modeIsItsRawValue() throws {
         #expect(String(data: try JSONEncoder().encode([PlayMode.pads]), encoding: .utf8) == "[1]")

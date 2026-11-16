@@ -12,6 +12,14 @@ public struct SetState: Codable, Equatable, Sendable {
         self.program = program
         self.values = values
     }
+
+    /// A field the data lacks gets its default (program 0, no values: every knob keeps its own);
+    /// a field this version does not know is ignored.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        program = try container.decodeIfPresent(Int.self, forKey: .program) ?? 0
+        values = try container.decodeIfPresent([String: Float].self, forKey: .values) ?? [:]
+    }
 }
 
 /// A pad saved with its sound.
@@ -26,6 +34,15 @@ public struct PadState: Codable, Equatable, Sendable {
         self.group = group
         self.set = set
     }
+
+    /// A field the data lacks gets its default (C2, Off, an empty set); a field this version does
+    /// not know is ignored.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        note = try container.decodeIfPresent(Int.self, forKey: .note) ?? 36
+        group = try container.decodeIfPresent(Int.self, forKey: .group)
+        set = try container.decodeIfPresent(SetState.self, forKey: .set) ?? SetState(program: 0, values: [:])
+    }
 }
 
 /// Everything a host or the app saves of a Brumle: the mode, the keyboard's sound and the sixteen pads.
@@ -39,6 +56,16 @@ public struct SynthState: Codable, Equatable, Sendable {
         self.mode = mode
         self.keyboard = keyboard
         self.pads = pads
+    }
+
+    /// A saved sound survives the format growing: a field the data lacks gets its default
+    /// (keyboard mode, an empty keyboard set, no pads, which leaves the pads alone), and a field
+    /// this version does not know is ignored.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(PlayMode.self, forKey: .mode) ?? .keyboard
+        keyboard = try container.decodeIfPresent(SetState.self, forKey: .keyboard) ?? SetState(program: 0, values: [:])
+        pads = try container.decodeIfPresent([PadState].self, forKey: .pads) ?? []
     }
 }
 
