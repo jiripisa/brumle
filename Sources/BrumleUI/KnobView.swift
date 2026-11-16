@@ -282,7 +282,7 @@ struct ControllerHandling: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onTapGesture(count: 2) { model.setController(Controllers.standard(for: parameter), of: parameter) }
+            .onTapGesture(count: 2) { Self.backToStandard(parameter, model: model) }
             .onTapGesture { listenOrStop(parameter, model: model) }
             .contextMenu {
                 Button("No controller") { model.setController(nil, of: parameter) }
@@ -292,6 +292,13 @@ struct ControllerHandling: ViewModifier {
                 Divider()
                 Self.resetButton(model: model)
             }
+    }
+
+    /// A double click: the control gets back the controller it came with, and
+    /// stops listening if it was.
+    static func backToStandard(_ parameter: Parameter, model: any InstrumentModel) {
+        if model.learning == parameter { model.learn(nil) }
+        model.setController(Controllers.standard(for: parameter), of: parameter)
     }
 
     /// Every control back to the controller it came with: in the controls'

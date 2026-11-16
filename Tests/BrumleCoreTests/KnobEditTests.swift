@@ -13,6 +13,7 @@ struct KnobEditTests {
     final class Recorder: InstrumentModel {
         enum Call: Equatable {
             case begin(String, SoundSet), end(String, SoundSet), reset(String, SoundSet)
+            case controller(String, Int?), learn(String?)
         }
         var calls: [Call] = []
         var positions: [String: Double] = [:]
@@ -52,10 +53,13 @@ struct KnobEditTests {
         func saveKit(as name: String) throws {}
         func deleteKit(_ name: String) throws {}
         func controller(of parameter: Parameter) -> Int? { nil }
-        func setController(_ controller: Int?, of parameter: Parameter) {}
+        func setController(_ controller: Int?, of parameter: Parameter) { calls.append(.controller(parameter.identifier, controller)) }
         func resetControllers() {}
-        var learning: Parameter? { nil }
-        func learn(_ parameter: Parameter?) {}
+        var learning: Parameter?
+        func learn(_ parameter: Parameter?) {
+            learning = parameter
+            calls.append(.learn(parameter?.identifier))
+        }
         var lastError: String? { nil }
         var lastErrorTime: ContinuousClock.Instant? { nil }
     }
@@ -157,6 +161,22 @@ struct KnobEditTests {
     }
 
     // MARK: MIDI mode
+
+    @Test("A double click in MIDI mode gives the standard controller back and calls off the control's own listening")
+    func doubleClickInMIDIMode() throws {
+        let vowel = try #require(Parameters.named("vowel"))
+        let model = Recorder()
+        model.learning = vowel                                    // the first click made it listen
+        ControllerHandling.backToStandard(vowel, model: model)
+        #expect(model.calls == [.learn(nil), .controller("vowel", 74)])
+        #expect(model.learning == nil)
+
+        model.calls = []
+        model.learning = ring                                     // another control listens: it goes on
+        ControllerHandling.backToStandard(vowel, model: model)
+        #expect(model.calls == [.controller("vowel", 74)])
+        #expect(model.learning == ring)
+    }
 
     @Test("In MIDI mode the keyboard's controls stay in play and a pad's step back; nothing sets an amount")
     func controllerMode() throws {
