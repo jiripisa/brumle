@@ -612,4 +612,216 @@ struct EngineTests: EngineHarness {
         #expect(synth.padHits(-1) == 0 && synth.padHits(16) == 0)
         #expect(brumle_pad_hits(nil, 0) == 0)
     }
+
+    // MARK: - MIDI controllers
+
+    /// Every knob of every pad's set, normalised.
+    private func padSets(_ engine: OpaquePointer) -> [[Float]] {
+        (1...Int32(BRUMLE_NUM_PADS)).map { set in (0..<brumle_num_params()).map { brumle_get_normalised(engine, set, $0) } }
+    }
+
+    @Test("A controller moves its keyboard knob: 127 the top, 64 the middle of a bipolar knob; no pad moves")
+    func controllerMovesKnob() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        brumle_set_mode(engine, Int32(BRUMLE_MODE_PADS))         // a controller moves the keyboard set in pad mode too
+        let pads = padSets(engine)
+        let vowel = Self.index("vowel"), pan = Self.index("pan")
+        let before = brumle_changes(engine)
+
+        brumle_midi(engine, 0xB0, 74, 127, 0)
+        _ = render(engine, frames: 128)
+        #expect(brumle_get_normalised(engine, Self.keyboard, vowel) == 1)
+        #expect(abs(brumle_get_plain(engine, Self.keyboard, vowel) - 3300) < 0.5)
+        #expect(brumle_changes(engine) != before)
+
+        let moved = brumle_changes(engine)
+        #expect(brumle_get_controller(engine, pan) == 10)
+        brumle_midi(engine, 0xB5, 10, 64, 0)                     // channel 6: any channel will do
+        _ = render(engine, frames: 128)
+        #expect(brumle_get_normalised(engine, Self.keyboard, pan) == 0.5)
+        #expect(brumle_get_plain(engine, Self.keyboard, pan) == 0)
+        #expect(brumle_changes(engine) != moved)
+
+        for controller: Int32 in 0...127 where ![120, 121, 123].contains(controller) {
+            brumle_midi(engine, 0xB0, controller, 127 - controller, 0)
+        }
+        _ = render(engine, frames: 128)
+        #expect(padSets(engine) == pads)
+    }
+
+    @Test("A controller is applied at its sample offset, in the order of the block's events")
+    func controllerAtItsOffset() {
+        let volume = Self.index("volume")
+        func ringing() -> OpaquePointer {
+            let engine = makeEngine(Self.plain)
+            brumle_midi(engine, 0x90, 36, 120, 0)
+            _ = render(engine, seconds: 0.1)
+            return engine
+        }
+        let atOffset = ringing(), split = ringing(), atStart = ringing(), untouched = ringing()
+        defer { for engine in [atOffset, split, atStart, untouched] { brumle_destroy(engine) } }
+
+        brumle_midi(atOffset, 0xB0, 7, 0, 50)
+        let a = render(atOffset, frames: 128)
+        var b = render(split, frames: 50)
+        brumle_midi(split, 0xB0, 7, 0, 0)
+        b += render(split, frames: 78)
+        brumle_midi(atStart, 0xB0, 7, 0, 0)
+        let c = render(atStart, frames: 128)
+
+        #expect(brumle_get_normalised(atOffset, Self.keyboard, volume) == 0)
+        #expect(a == b, "the controller did not land at frame 50")
+        #expect(Array(a[..<50]) == render(untouched, frames: 50), "the controller acted before frame 50")
+        #expect(a != c)
+    }
+
+    @Test("A note after a controller in the same block plays the controller's knob")
+    func controllerBeforeANote() {
+        let stroke = Self.index("stroke")
+        let engine = makeEngine(Self.plain)                        // Stroke Out
+        defer { brumle_destroy(engine) }
+        let cc = brumle_get_controller(engine, stroke)
+        brumle_midi(engine, 0x90, 36, 110, 20)
+        brumle_midi(engine, 0xB0, cc, 64, 10)                      // Stroke In, before the note
+        let played = render(engine, frames: 4_096)
+
+        let reference = makeEngine(Self.plain.merging(["stroke": 1]) { $1 })
+        defer { brumle_destroy(reference) }
+        brumle_midi(reference, 0x90, 36, 110, 20)
+        #expect(played == render(reference, frames: 4_096))
+    }
+
+    @Test("A knob that learns takes the next controller that moves, and its value")
+    func learnTakesNextCC() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        let edge = Self.index("edge")
+        let standard = brumle_standard_controller(edge)
+        #expect(brumle_learning(engine) == -1)
+        brumle_learn(engine, edge)
+        #expect(brumle_learning(engine) == edge)
+        let before = brumle_changes(engine)
+
+        brumle_midi(engine, 0xB3, 40, 127, 0)
+        _ = render(engine, frames: 128)
+        #expect(brumle_learning(engine) == -1)
+        #expect(brumle_get_controller(engine, edge) == 40)
+        #expect(brumle_get_normalised(engine, Self.keyboard, edge) == 1)
+        #expect(brumle_changes(engine) != before)
+
+        brumle_midi(engine, 0xB0, standard, 0, 0)                 // the one it came with moves it no more
+        brumle_midi(engine, 0xB0, 41, 0, 0)                       // nor does the next one: learning is over
+        _ = render(engine, frames: 128)
+        #expect(brumle_get_normalised(engine, Self.keyboard, edge) == 1)
+        #expect(brumle_get_controller(engine, edge) == 40)
+
+        brumle_learn(engine, edge)
+        brumle_learn(engine, -1)                                   // called off
+        brumle_midi(engine, 0xB0, 42, 0, 0)
+        _ = render(engine, frames: 128)
+        #expect(brumle_get_controller(engine, edge) == 40)
+        for param: Int32 in [Int32(brumle_lfo_amount(0, Self.index("vowel"))), brumle_num_params(), -2] {
+            brumle_learn(engine, param)                            // an amount, or no parameter: nobody learns
+            #expect(brumle_learning(engine) == -1)
+        }
+    }
+
+    @Test("A reserved controller is not given to a knob, and does not end a learn")
+    func reservedNotTaken() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        let edge = Self.index("edge")
+        let standard = brumle_standard_controller(edge)
+        let reserved: [Int32] = [0, 1, 6, 32, 38, 64] + Array(96...101) + Array(120...127)
+        for controller in reserved {
+            #expect(brumle_controller_reserved(controller) == 1, "CC \(controller)")
+            brumle_set_controller(engine, edge, controller)
+            #expect(brumle_get_controller(engine, edge) == standard, "CC \(controller)")
+        }
+        #expect(brumle_controller_reserved(-1) == 1 && brumle_controller_reserved(128) == 1)
+        brumle_set_controller(engine, edge, 128)
+        #expect(brumle_get_controller(engine, edge) == standard)
+
+        brumle_learn(engine, edge)
+        for controller in reserved where ![120, 121, 123].contains(controller) { brumle_midi(engine, 0xB0, controller, 100, 0) }
+        _ = render(engine, frames: 128)
+        #expect(brumle_learning(engine) == edge)
+        #expect(brumle_get_controller(engine, edge) == standard)
+    }
+
+    @Test("One controller serves one knob")
+    func oneControllerOneKnob() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        let edge = Self.index("edge"), vowel = Self.index("vowel")
+        brumle_set_controller(engine, edge, 74)                    // Vowel's
+        #expect(brumle_get_controller(engine, edge) == 74)
+        #expect(brumle_get_controller(engine, vowel) == -1)
+        let vowelBefore = brumle_get_normalised(engine, Self.keyboard, vowel)
+        brumle_midi(engine, 0xB0, 74, 127, 0)
+        _ = render(engine, frames: 128)
+        #expect(brumle_get_normalised(engine, Self.keyboard, edge) == 1)
+        #expect(brumle_get_normalised(engine, Self.keyboard, vowel) == vowelBefore)
+
+        brumle_learn(engine, vowel)                                // learnt back
+        brumle_midi(engine, 0xB0, 74, 0, 0)
+        _ = render(engine, frames: 128)
+        #expect(brumle_get_controller(engine, vowel) == 74 && brumle_get_controller(engine, edge) == -1)
+
+        brumle_set_controller(engine, vowel, -1)
+        #expect(brumle_get_controller(engine, vowel) == -1)
+        brumle_reset_controllers(engine)
+        for knob: Int32 in 0..<34 {
+            #expect(brumle_get_controller(engine, knob) == brumle_standard_controller(knob))
+        }
+    }
+
+    @Test("Controllers nobody listens to, a changed map and a learn called off leave the sound bit for bit")
+    func sameSoundWithoutCC() {
+        let score = PrototypeScores.phrase(note: 36)
+        func play(_ engine: OpaquePointer, noise: Bool) -> [Float] {
+            var out: [Float] = []
+            var next = 0
+            for block in 0..<Self.frames(3) / 128 {
+                let start = block * 128
+                while next < score.hits.count, Int(Double(score.hits[next].frame) / PrototypeScores.sampleRate * Self.rate) < start + 128 {
+                    let hit = score.hits[next]
+                    let offset = Int32(max(0, Int(Double(hit.frame) / PrototypeScores.sampleRate * Self.rate) - start))
+                    brumle_midi(engine, hit.chokeOnly ? 0x80 : 0x90, Int32(hit.note), Int32(hit.chokeOnly ? 0 : hit.velocity), offset)
+                    next += 1
+                }
+                if noise {
+                    for controller: Int32 in [3, 40, 105, 119, 0, 6, 64, 127] { brumle_midi(engine, 0xB0, controller, Int32(block % 128), Int32(block % 128)) }
+                }
+                out += render(engine, frames: 128)
+            }
+            return out
+        }
+        let quiet = makeEngine()
+        defer { brumle_destroy(quiet) }
+        let busy = makeEngine()
+        defer { brumle_destroy(busy) }
+        brumle_set_controller(busy, Self.index("edge"), 74)
+        brumle_set_controller(busy, Self.index("ring"), -1)
+        brumle_reset_controllers(busy)
+        brumle_learn(busy, Self.index("ring"))
+        brumle_learn(busy, -1)
+        let before = brumle_changes(busy)
+        #expect(play(busy, noise: true) == play(quiet, noise: false))
+        #expect(brumle_changes(busy) == before)
+    }
+
+    @Test("The controller calls tolerate a null engine and parameters out of range")
+    func controllersOutOfRange() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        for param: Int32 in [-1, brumle_num_params(), Int32(brumle_vel_amount(Self.index("ring")))] {
+            #expect(brumle_standard_controller(param) == -1)
+            brumle_set_controller(engine, param, 40)
+            #expect(brumle_get_controller(engine, param) == -1)
+        }
+        brumle_set_controller(nil, 0, 40); brumle_reset_controllers(nil); brumle_learn(nil, 0)
+        #expect(brumle_get_controller(nil, 0) == -1 && brumle_learning(nil) == -1 && brumle_changes(nil) == 0)
+    }
 }

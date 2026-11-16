@@ -18,12 +18,15 @@ struct ContentView: View {
         .fixedSize()                    // the panel's width, as tall as its contents
         .instrumentBackground()
         .sheet(isPresented: $showingSettings) { SettingsView(model: model) }
-        // A key or pad held with the mouse would sound on: the mouse-up goes elsewhere.
+        // A key or pad held with the mouse would sound on (the mouse-up goes
+        // elsewhere), and a knob would go on listening for a controller.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             model.releaseHeld()
+            model.learn(nil)
         }
         .onDisappear {
             model.releaseHeld()
+            model.learn(nil)
             model.saveIfEdited()
         }
     }

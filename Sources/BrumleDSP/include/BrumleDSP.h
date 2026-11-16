@@ -140,6 +140,31 @@ void  brumle_midi(BrumleEngine*, int status, int data1, int data2, int sampleOff
 // call, in the order posted, at their sample offset into that call. The queue holds 512 posted
 // events; an event posted while it is full is dropped.
 
+// MIDI controllers on the keyboard set's knobs. Every knob comes with a controller (a control
+// change number) and can be given another; a control change on any channel then puts the knob
+// of the keyboard set where its value says: 0 the bottom of its travel, 127 the top, and 64 the
+// middle of a knob that has one (-100 ... 100 %). A choice takes the choice nearest to the value.
+// The pads' sets are never moved, not in pad mode either. A controller serves one knob, and the
+// amounts have none. The control change is applied at its sample offset, in the order of the
+// block's MIDI. Controllers 1 (the mod wheel), 120, 121 and 123 keep their meanings. All of these
+// may be called from any thread while audio runs.
+int  brumle_standard_controller(int param);               // what a knob comes with; -1 for none
+int  brumle_controller_reserved(int cc);                  // 1 for one MIDI or the engine keeps for itself
+int  brumle_get_controller(const BrumleEngine*, int param);          // -1 for none
+// -1 takes the knob's controller away. A reserved controller is not taken; one another knob has
+// moves to this one.
+void brumle_set_controller(BrumleEngine*, int param, int cc);
+void brumle_reset_controllers(BrumleEngine*);             // every knob back to its standard controller
+// Learn: the knob takes the next controller that moves, not a reserved one, and goes where it
+// says. -1 (or a parameter that is not a knob) calls it off.
+void brumle_learn(BrumleEngine*, int param);
+int  brumle_learning(const BrumleEngine*);               // the knob that is learning, -1 for none
+// Counts what MIDI changed without the caller: a knob moved by its controller, a controller
+// learnt. A window compares it with what it saw last to know when to read the engine again: the
+// count is raised after the change (release) and read with acquire, so a window that sees it rise
+// reads the new values.
+unsigned brumle_changes(const BrumleEngine*);
+
 // Renders `frames` samples. `right` may be NULL: left then gets the left channel.
 void  brumle_process(BrumleEngine*, float* left, float* right, int frames);
 

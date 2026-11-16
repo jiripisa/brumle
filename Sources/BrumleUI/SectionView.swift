@@ -56,6 +56,9 @@ struct SectionView: View {
 /// (Stroke, Key Up, Curve, LFO Start), or a glass menu where the choices are
 /// many (the LFO shapes). Velocity and the LFOs move no switch, so it steps
 /// back while their amounts are being set.
+///
+/// While the MIDI button is on, its controller stands in the control's place,
+/// under its name, and it learns as a knob does (`ControllerHandling`).
 struct ChoiceView: View {
 
     let parameter: Parameter
@@ -66,34 +69,73 @@ struct ChoiceView: View {
     /// More choices than this make a menu.
     private static let segmentsAtMost = 4
 
+    private var showsController: Bool { editing == .controller }
+
     var body: some View {
-        let choices = parameter.choices
-        let chosen = Int(model.value(of: parameter, in: set).rounded())
         VStack(spacing: 4) {
             Text(parameter.name)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Artwork.bone)
                 .lineLimit(1)
                 .fixedSize()
-            if choices.count > Self.segmentsAtMost {
-                Menu {
-                    ForEach(choices.indices, id: \.self) { index in
-                        Toggle(choices[index], isOn: Binding(get: { index == chosen }, set: { _ in choose(index) }))
-                    }
-                } label: {
-                    Text(choices.indices.contains(chosen) ? choices[chosen] : "—")
-                        .font(.system(size: 12))
+            control
+                // Kept in the layout under the controller, so that nothing moves.
+                .opacity(showsController ? 0 : 1)
+                .allowsHitTesting(!showsController)
+                .accessibilityHidden(showsController)
+                .overlay {
+                    if showsController { controller }
                 }
-                .menuStyle(.button)
-                .buttonStyle(.glass)
-                .frame(width: KnobView.width - 4)
-                .accessibilityLabel(parameter.name)
-            } else {
-                GlassSegments(label: parameter.name, titles: choices, selected: chosen, action: choose)
-            }
         }
-        .opacity(editing.stepsBack(parameter) ? 0.3 : 1)
-        .allowsHitTesting(!editing.stepsBack(parameter))
+        .opacity(editing.stepsBack(parameter, in: set) ? 0.3 : 1)
+        .allowsHitTesting(!editing.stepsBack(parameter, in: set))
+    }
+
+    @ViewBuilder
+    private var control: some View {
+        let choices = parameter.choices
+        let chosen = Int(model.value(of: parameter, in: set).rounded())
+        if choices.count > Self.segmentsAtMost {
+            Menu {
+                ForEach(choices.indices, id: \.self) { index in
+                    Toggle(choices[index], isOn: Binding(get: { index == chosen }, set: { _ in choose(index) }))
+                }
+            } label: {
+                Text(choices.indices.contains(chosen) ? choices[chosen] : "—")
+                    .font(.system(size: 12))
+            }
+            .menuStyle(.button)
+            .buttonStyle(.glass)
+            .frame(width: KnobView.width - 4)
+            .accessibilityLabel(parameter.name)
+        } else {
+            GlassSegments(label: parameter.name, titles: choices, selected: chosen, action: choose)
+        }
+    }
+
+    /// The switch's controller, in a capsule the size of the switch; dashed while it listens.
+    private var controller: some View {
+        let listening = model.learning == parameter
+        let caption = Controllers.caption(of: parameter, in: set, controller: model.controller(of: parameter),
+                                          learning: model.learning)
+        return Text(caption)
+            .font(.system(size: 12).monospacedDigit())
+            .foregroundStyle(listening ? Artwork.aurora : Artwork.silver)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Artwork.midnight.opacity(0.4), in: Capsule())
+            .overlay {
+                if listening {
+                    Capsule().stroke(Artwork.aurora, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                }
+            }
+            .contentShape(Capsule())
+            .modifier(ControllerHandling(parameter: parameter, model: model))
+            .accessibilityElement()
+            .accessibilityLabel(parameter.name)
+            .accessibilityValue(caption)
+            .modifier(ControllerHandling.Accessibility(parameter: parameter, model: model,
+                                                       inPlay: !editing.stepsBack(parameter, in: set)))
     }
 
     /// One click is one edit: a host records it as a gesture of its own.

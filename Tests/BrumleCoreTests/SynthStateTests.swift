@@ -50,7 +50,7 @@ struct SynthStateTests {
         #expect(state.pads.allSatisfy { $0.set.values.count == Parameters.all.count })
     }
 
-    @Test("A name this version does not know is ignored; a knob the state lacks keeps its value")
+    @Test("A name this version does not know is ignored; a knob the state lacks takes its program's value")
     func unknownAndMissingKeys() throws {
         let synth = Synth(sampleRate: 48_000)
         let vowel = try vowel(), ring = try ring()
@@ -64,13 +64,41 @@ struct SynthStateTests {
 
         synth.apply(state)
         #expect(abs(synth.value(of: vowel) - 600) < 1)
-        #expect(abs(synth.value(of: ring) - 4) < 1e-4)
+        let programRing = Programs.value(program: state.keyboard.program, parameter: ring)
+        #expect(abs(synth.value(of: ring) - programRing) < 1e-4)
 
-        // Even a program that differs does not take a missing knob along.
+        // The same when the state's program differs: the missing knob is that program's.
+        synth.setValue(4, of: ring)
         state.keyboard.program = (synth.program() + 1) % 3
         synth.apply(state)
         #expect(synth.program() == state.keyboard.program)
-        #expect(abs(synth.value(of: ring) - 4) < 1e-4)
+        #expect(abs(synth.value(of: ring) - Programs.value(program: state.keyboard.program, parameter: ring)) < 1e-4)
+    }
+
+    @Test("A state of 30 knobs takes the program's values for the other four, the octave included")
+    func thirtyKnobState() throws {
+        let synth = Synth(sampleRate: 48_000)
+        let program = 3
+        let kept = Set(Parameters.all.prefix(30).map(\.identifier))
+        #expect(kept.count == 30 && Parameters.all.count > 30)
+        var set = SetState(program: program, values: [:])
+        for parameter in Parameters.all.prefix(30) { set.values[parameter.identifier] = parameter.defaultValue }
+        for parameter in Parameters.all { synth.setValue(parameter.range.upperBound, of: parameter) }
+
+        synth.apply(set, to: .keyboard)
+        for parameter in Parameters.all {
+            let expected = kept.contains(parameter.identifier)
+                ? parameter.defaultValue : Programs.value(program: program, parameter: parameter)
+            #expect(abs(synth.value(of: parameter) - expected) < 1e-3, "\(parameter.identifier)")
+        }
+    }
+
+    @Test("A set's preset name survives JSON, and a set saved without one reads as none")
+    func presetName() throws {
+        let set = SetState(program: 2, values: ["vowel": 600], preset: "Mine")
+        let data = try JSONEncoder().encode(set)
+        #expect(try JSONDecoder().decode(SetState.self, from: data) == set)
+        #expect(try JSONDecoder().decode(SetState.self, from: Data(#"{"program":2}"#.utf8)).preset == nil)
     }
 
     @Test("Fewer than sixteen pads leave the rest alone")

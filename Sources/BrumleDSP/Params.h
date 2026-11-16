@@ -97,6 +97,46 @@ constexpr int velAmountOf(int knob)
     return -1;
 }
 
+// ---------------------------------------------------------------------------------------------
+// MIDI controllers. Every knob comes with one: the controller General MIDI names for the thing
+// where there is one (7 Volume, 10 Pan, 74 Brightness, 71 Timbre, 72 Release Time, 2 Breath, 73
+// Attack Time), and for the others the numbers MIDI leaves undefined (14-31, 85-90, 102-119), in
+// the order of the knobs. The amounts have none.
+// ---------------------------------------------------------------------------------------------
+constexpr int kNoController = -1;
+
+constexpr int kStandardController[kNumKnobs] = {
+    72, 14, 15, 16, 17, 18,                     // Reed: Ring (Release Time), Edge, Offset, Body, Buzz, Clang
+    73, 19, 20, 21, 22,                         // Stroke: Vel Sens (Attack Time), Stroke, Damp, Key Up, Vary
+    74, 23, 24, 25, 71, 26, 27, 28, 29,         // Mouth: Vowel (Brightness), Sweep, Sweep Time, Curve, Reso (Timbre),
+                                                //        Throat, Throat Tune, Open, Close
+    2, 30, 31, 85,                              // Breath: Breath (Breath Controller), Puff, Puff Time, Air
+    7, 10, 86, 87, 88, 89, 90, 102, 103, 104,   // Master: Volume, Pan, Tune, Octave, Bend>Vowel, LFO Start,
+                                                //         LFO 1 Rate, LFO 1 Shape, LFO 2 Rate, LFO 2 Shape
+};
+
+constexpr int standardController(int param) { return param >= 0 && param < kNumKnobs ? kStandardController[param] : kNoController; }
+
+// Controllers no knob can have: those MIDI gives a meaning of its own (bank select, data entry,
+// the sustain pedal, parameter numbers, channel mode: 120 All Sound Off, 121 Reset All
+// Controllers, 123 All Notes Off) and the mod wheel, which moves Close.
+constexpr bool controllerReserved(int cc)
+{
+    return cc <= 1 || cc == 6 || cc == 32 || cc == 38 || cc == 64 || (cc >= 96 && cc <= 101) || cc >= 120;
+}
+
+constexpr bool standardControllersAreSound()
+{
+    for (int i = 0; i < kNumKnobs; ++i)
+    {
+        const int cc = kStandardController[i];
+        if (cc < 0 || cc > 127 || controllerReserved(cc)) return false;
+        for (int j = 0; j < i; ++j) if (kStandardController[j] == cc) return false;
+    }
+    return true;
+}
+static_assert(standardControllersAreSound(), "a knob's standard controller is reserved or shared");
+
 // The shapes of an LFO's cycle. Steps takes a new random level each cycle and holds it; Wander
 // takes one and moves there smoothly.
 enum LfoShape { kLfoSine, kLfoTriangle, kLfoRampUp, kLfoRampDown, kLfoSquare, kLfoSteps, kLfoWander, kNumLfoShapes };

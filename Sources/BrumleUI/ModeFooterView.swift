@@ -121,6 +121,9 @@ struct KhomusView: View {
                     Image(nsImage: khomus).resizable().interpolation(.high).scaledToFill()
                 }
                 .clipped()
+                // Only a picture: its square, cropped for the eye but not for the mouse, would
+                // take the clicks meant for the controls above it (Curve's row).
+                .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
     }

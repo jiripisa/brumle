@@ -19,6 +19,10 @@
 //
 // What a voice plays is its view (viewFor): the knob set, moved by the voice's two LFOs, the
 // hit's velocity and, for a keyboard voice, the wheels.
+//
+// MIDI controllers: every knob of the keyboard set listens to a control change number (it comes
+// with one, and can be given another: "learn"), and a control change puts the knob where its
+// value says, at the control change's place in the block.
 
 // A product and a sum stay two roundings. An optimised build would otherwise fuse them into one
 // multiply-add where a debug build does not, and the two builds would render different last
@@ -104,6 +108,7 @@ struct BrumleEngine
     {
         for (int s = 0; s < BRUMLE_NUM_SETS; ++s)
             for (int i = 0; i < kNumParams; ++i) sets_[s][i].store(param(i).toNormalised(param(i).def), std::memory_order_relaxed);
+        resetControllers();
         loadDefaultKit();
         prepare(44100.0);
     }
@@ -174,6 +179,33 @@ struct BrumleEngine
     int latency() const { return latency_.load(std::memory_order_relaxed); }
 
     void requestReset() { resetPending_.store(true, std::memory_order_release); }   // any thread
+
+    // ----- MIDI controllers (any thread) --------------------------------------------------
+    int controllerOf(int knob) const { return controller_[knob].load(std::memory_order_relaxed); }
+
+    // A controller serves one knob: whoever had it before has none. A reserved one is not taken.
+    void setController(int knob, int cc)
+    {
+        if (cc < 0) { controller_[knob].store(kNoController, std::memory_order_relaxed); return; }
+        if (cc > 127 || controllerReserved(cc)) return;
+        for (int i = 0; i < kNumKnobs; ++i)
+            if (i != knob && controller_[i].load(std::memory_order_relaxed) == cc) controller_[i].store(kNoController, std::memory_order_relaxed);
+        controller_[knob].store((int8_t)cc, std::memory_order_relaxed);
+    }
+
+    void resetControllers()
+    {
+        for (int i = 0; i < kNumKnobs; ++i) controller_[i].store((int8_t)standardController(i), std::memory_order_relaxed);
+    }
+
+    // The knob that takes the next controller that moves; -1 for none.
+    void learn(int knob) { learning_.store(knob, std::memory_order_relaxed); }
+    int  learning() const { return learning_.load(std::memory_order_relaxed); }
+
+    // Counts what MIDI did behind a window's back: a knob moved by its controller, a controller learnt.
+    // Released after the knob or controller it counts, acquired here: a reader that sees the new
+    // count also sees what changed.
+    unsigned changes() const { return changes_.load(std::memory_order_acquire); }
 
     // ----- MIDI ---------------------------------------------------------------------------
     void postMidi(uint8_t status, uint8_t d1, uint8_t d2, int offset) { posted_.post(status, d1, d2, offset); }   // any thread
@@ -345,12 +377,40 @@ private:
         else if (ev.isAllNotesOff()) { for (Voice& v : voices_) if (v.active) v.choke(v.knob(kDamp)); }
         else if (ev.isController() && ev.data1 == 121) bend_ = modWheel_ = pressure_ = 0.0f;   // Reset All Controllers
         else if (ev.isController() && ev.data1 == 1) modWheel_ = ev.data2 / 127.0f;
+        else if (ev.isController() && !controllerReserved(ev.data1)) controllerMoved(ev.data1, ev.data2);
         else if (ev.isAftertouch()) pressure_ = ev.data1 / 127.0f;
         else if (ev.isPitchBend())          // -1 at the bottom, +1 at the top
         {
             const int bend = ev.pitchBend();
             bend_ = (float)bend / (bend >= 0 ? 8191.0f : 8192.0f);
         }
+    }
+
+    // A controller that is not one of MIDI's own: the knob that is learning takes it, and the
+    // keyboard knob that listens to it goes where its value says. The block plays the new place
+    // from here on, as the setters' next block would.
+    void controllerMoved(int cc, int value)
+    {
+        bool changed = false;
+        int learning = learning_.load(std::memory_order_relaxed);
+        if (learning >= 0 && learning_.compare_exchange_strong(learning, -1, std::memory_order_relaxed))
+        {
+            setController(learning, cc);
+            changed = true;
+        }
+        for (int i = 0; i < kNumKnobs; ++i)
+            if (controller_[i].load(std::memory_order_relaxed) == cc)
+            {
+                // 64 is the middle of a controller's travel: a knob that has a middle of its own
+                // (-100 ... 100 %) stands on it there, which 64 / 127 would miss.
+                const Param& p = param(i);
+                const bool onMiddle = value == 64 && p.max > 0.0f && p.min == -p.max;
+                setNormalised(BRUMLE_KEYBOARD_SET, i, onMiddle ? 0.5f : (float)value / 127.0f);
+                keyNorm_[i] = getNormalised(BRUMLE_KEYBOARD_SET, i);
+                keyView_.v[i] = p.toPlain(keyNorm_[i]);
+                changed = true;
+            }
+        if (changed) changes_.fetch_add(1, std::memory_order_release);
     }
 
     // Before a hit: if BRUMLE_MAX_VOICES voices sound, the quietest of them is choked, in
@@ -517,6 +577,9 @@ private:
     std::atomic<int>   sounding_{0};
     std::atomic<int>   latency_{0};
     std::atomic<bool>  resetPending_{false};
+    std::atomic<int8_t>   controller_[kNumKnobs];        // the controller each knob listens to, kNoController for none
+    std::atomic<int>      learning_{-1};                 // the knob that takes the next controller
+    std::atomic<unsigned> changes_{0};
 
     MidiQueue posted_;
     MidiEvent events_[kMaxEvents];
@@ -600,6 +663,9 @@ int brumle_num_lfos(void) { return kNumLfos; }
 int brumle_lfo_amount(int lfo, int param) { return lfo >= 0 && lfo < kNumLfos && validParam(param) ? amountOf(lfo, param) : -1; }
 int brumle_vel_amount(int param) { return validParam(param) ? velAmountOf(param) : -1; }
 
+int brumle_standard_controller(int param) { return validParam(param) ? standardController(param) : kNoController; }
+int brumle_controller_reserved(int cc) { return cc < 0 || cc > 127 || controllerReserved(cc) ? 1 : 0; }
+
 int brumle_num_programs(void) { return (int)programs().size(); }
 const char* brumle_program_name(int p) { return p >= 0 && p < brumle_num_programs() ? programs()[(size_t)p].name : ""; }
 int brumle_program_sets(int param) { return validParam(param) && programSets(param) ? 1 : 0; }
@@ -649,6 +715,15 @@ int  brumle_last_note(const BrumleEngine* e) { return e ? e->lastNote() : -1; }
 void brumle_send_to_pad(BrumleEngine* e, int pad) { if (e && validPad(pad)) e->sendToPad(pad); }
 void brumle_load_default_kit(BrumleEngine* e) { if (e) e->loadDefaultKit(); }
 int  brumle_sounding_voices(const BrumleEngine* e) { return e ? e->soundingVoices() : 0; }
+
+static bool validKnob(int param) { return param >= 0 && param < kNumKnobs; }
+
+int  brumle_get_controller(const BrumleEngine* e, int param) { return e && validKnob(param) ? e->controllerOf(param) : kNoController; }
+void brumle_set_controller(BrumleEngine* e, int param, int cc) { if (e && validKnob(param)) e->setController(param, cc); }
+void brumle_reset_controllers(BrumleEngine* e) { if (e) e->resetControllers(); }
+void brumle_learn(BrumleEngine* e, int param) { if (e) e->learn(validKnob(param) ? param : -1); }
+int  brumle_learning(const BrumleEngine* e) { return e ? e->learning() : -1; }
+unsigned brumle_changes(const BrumleEngine* e) { return e ? e->changes() : 0; }
 
 void brumle_post_midi(BrumleEngine* e, int status, int data1, int data2, int sampleOffset)
 {

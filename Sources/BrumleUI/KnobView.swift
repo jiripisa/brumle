@@ -10,27 +10,36 @@ public enum KnobEditing: Equatable, Sendable {
     case amount(lfo: Int)
     /// How far the velocity of a hit moves them.
     case velocity
+    /// Their MIDI controllers: a click makes a control take the next
+    /// controller that moves (the header's MIDI button).
+    case controller
 
-    /// The amount a knob sets while this is on; nil for its value, and for a
-    /// knob this source cannot move.
+    /// The amount a knob sets while this is on; nil for its value, for a knob
+    /// this source cannot move, and for the controllers.
     func amount(of parameter: Parameter) -> Parameter? {
         switch self {
-        case .value: nil
+        case .value, .controller: nil
         case .amount(let lfo): LFOs.amount(of: parameter, lfo: lfo)
         case .velocity: Velocity.amount(of: parameter)
         }
     }
 
-    /// Whether a control is out of play: an LFO's or the velocity's button is
-    /// on and the control has no amount for it.
-    func stepsBack(_ parameter: Parameter) -> Bool {
-        self != .value && amount(of: parameter) == nil
+    /// Whether a control of a set is out of play: an LFO's or the velocity's
+    /// button is on and the control has no amount for it, or MIDI's is on and
+    /// the control can have no controller (a pad's).
+    func stepsBack(_ parameter: Parameter, in set: SoundSet) -> Bool {
+        switch self {
+        case .value: false
+        case .controller: !Controllers.canLearn(parameter, in: set)
+        case .amount, .velocity: amount(of: parameter) == nil
+        }
     }
 
-    /// The colour of the source whose amounts are being set.
+    /// The colour of the source whose amounts are being set; icy silver for
+    /// the controllers.
     @MainActor var colour: Color {
         switch self {
-        case .value: Artwork.silver
+        case .value, .controller: Artwork.silver
         case .amount(let lfo): Artwork.lfo(lfo)
         case .velocity: Artwork.vel
         }
@@ -39,13 +48,18 @@ public enum KnobEditing: Equatable, Sendable {
 
 /// One parameter as a knob: its name, a value arc around the cap, the value
 /// below. Drag up and down to turn it (Shift for fine steps), double-click to
-/// go back to the program's value.
+/// go back to the value of its preset or program. VoiceOver turns it a step
+/// at a time.
 ///
 /// A knob an LFO or the velocity moves shows a thin arc in that source's
 /// colour: the part of its travel the LFO sweeps, or the way a softer hit
 /// moves it. While a source's button in the header is on, the knob sets that
 /// source's amount instead of its own value: the same drag and double click,
 /// the amount below. Knobs the source cannot move step back meanwhile.
+///
+/// While the MIDI button is on, the knob shows its MIDI controller below
+/// (`ControllerHandling`): a click makes it listen for the next controller
+/// that moves. A pad's knobs have none and step back.
 public struct KnobView: View {
 
     private let parameter: Parameter
@@ -80,6 +94,9 @@ public struct KnobView: View {
     /// What a drag and a double click act on: the amount while one is being set, else the knob.
     private var edited: Parameter { amount ?? parameter }
 
+    /// Whether the knob is waiting for a controller to move.
+    private var listening: Bool { editing == .controller && model.learning == parameter }
+
     public var body: some View {
         let position = model.position(of: parameter, in: set)
         VStack(spacing: 0) {
@@ -92,7 +109,8 @@ public struct KnobView: View {
                     .stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .padding(1.5)
                 arc(from: parameter.isBipolar ? min(0.5, position) : 0, to: parameter.isBipolar ? max(0.5, position) : position)
-                    .stroke(Artwork.aurora.opacity(amount == nil ? 1 : 0.4), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .stroke(Artwork.aurora.opacity(amount == nil && editing != .controller ? 1 : 0.4),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .padding(1.5)
                 modulationArcs(position: position)
                 cap
@@ -105,9 +123,15 @@ public struct KnobView: View {
                     .rotationEffect(.degrees(-Self.sweep / 2 + Self.sweep * position))
             }
             .frame(width: Self.dial, height: Self.dial)
+            .overlay {
+                // Listening for a controller: a dashed ring round the knob.
+                if listening {
+                    Circle().stroke(Artwork.aurora, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])).padding(-1)
+                }
+            }
             .contentShape(Circle())
-            .gesture(drag)
-            .onTapGesture(count: 2) { KnobEdit.reset(edited, in: set, model: model) }
+            .modifier(Handling(editing: editing, parameter: parameter, model: model, drag: drag,
+                               reset: { KnobEdit.reset(edited, in: set, model: model) }))
             // However a drag stops (cancelled, the knob stepping back, the view going away),
             // the edit it began ends, in the set it began in.
             .onChange(of: dragging) { _, isDragging in
@@ -116,21 +140,77 @@ public struct KnobView: View {
             .onDisappear(perform: finishEdit)
             Text(valueText)
                 .font(.system(size: 12).monospacedDigit())
-                .foregroundStyle(amount == nil ? Artwork.silver : editing.colour)
+                .foregroundStyle(listening ? Artwork.aurora : amount == nil ? Artwork.silver : editing.colour)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)            // "move a control" in a knob's width
         }
         .frame(width: Self.width)
-        .opacity(editing.stepsBack(parameter) ? 0.3 : 1)
-        .allowsHitTesting(!editing.stepsBack(parameter))
+        .opacity(editing.stepsBack(parameter, in: set) ? 0.3 : 1)
+        .allowsHitTesting(!editing.stepsBack(parameter, in: set))
         .accessibilityElement()
         .accessibilityLabel(amount?.name ?? parameter.name)
         .accessibilityValue(valueText)
+        .modifier(Accessibility(editing: editing, parameter: parameter, model: model,
+                                inPlay: !editing.stepsBack(parameter, in: set)) { up in
+            KnobEdit.adjust(edited, in: set, isAmount: amount != nil, up: up, model: model)
+        })
     }
 
-    /// Below the knob: its value, or the amount being set.
+    /// Below the knob: its value, the amount being set, or its controller.
     private var valueText: String {
+        if editing == .controller {
+            return Controllers.caption(of: parameter, in: set, controller: model.controller(of: parameter),
+                                       learning: model.learning)
+        }
         if let amount { return LFOs.label(amount: model.value(of: amount, in: set)) }
         return model.label(of: parameter, in: set)
+    }
+
+    /// What the mouse does on the knob: a drag and a double click while it is
+    /// a knob or an amount; while it shows its controller, the controller's
+    /// click, double click and menu, when a drag would turn a knob nobody is
+    /// looking at.
+    private struct Handling<Drag: Gesture>: ViewModifier {
+        let editing: KnobEditing
+        let parameter: Parameter
+        let model: any InstrumentModel
+        let drag: Drag
+        let reset: () -> Void
+
+        func body(content: Content) -> some View {
+            if editing == .controller {
+                content.modifier(ControllerHandling(parameter: parameter, model: model))
+            } else {
+                content.gesture(drag).onTapGesture(count: 2, perform: reset)
+            }
+        }
+    }
+
+    /// What VoiceOver does with the knob: turns it a step up or down, or,
+    /// while it shows its controller, makes it listen for one. Nothing while
+    /// it steps back, as for the mouse.
+    private struct Accessibility: ViewModifier {
+        let editing: KnobEditing
+        let parameter: Parameter
+        let model: any InstrumentModel
+        let inPlay: Bool
+        let adjust: (_ up: Bool) -> Void
+
+        func body(content: Content) -> some View {
+            if !inPlay {
+                content
+            } else if editing == .controller {
+                content.modifier(ControllerHandling.Accessibility(parameter: parameter, model: model))
+            } else {
+                content.accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: adjust(true)
+                    case .decrement: adjust(false)
+                    @unknown default: break
+                    }
+                }
+            }
+        }
     }
 
     /// What the LFOs sweep and where a softer hit takes the knob: an arc each,
@@ -189,4 +269,65 @@ public struct KnobView: View {
         edit?.end(model: model)
         edit = nil
     }
+}
+
+/// What the mouse does on a control (a knob or a switch) while the panel
+/// shows the controllers: a click makes it listen for the next controller that
+/// moves, and a second click calls that off; a double click gives it back the
+/// controller it came with; the secondary click's menu takes its controller
+/// away or gives the standard one back, or gives every control its own.
+struct ControllerHandling: ViewModifier {
+    let parameter: Parameter
+    let model: any InstrumentModel
+
+    func body(content: Content) -> some View {
+        content
+            .onTapGesture(count: 2) { Self.backToStandard(parameter, model: model) }
+            .onTapGesture { listenOrStop(parameter, model: model) }
+            .contextMenu {
+                Button("No controller") { model.setController(nil, of: parameter) }
+                if let standard = Controllers.standard(for: parameter) {
+                    Button("Back to \(Controllers.label(standard))") { model.setController(standard, of: parameter) }
+                }
+                Divider()
+                Self.resetButton(model: model)
+            }
+    }
+
+    /// A double click: the control gets back the controller it came with, and
+    /// stops listening if it was.
+    static func backToStandard(_ parameter: Parameter, model: any InstrumentModel) {
+        if model.learning == parameter { model.learn(nil) }
+        model.setController(Controllers.standard(for: parameter), of: parameter)
+    }
+
+    /// Every control back to the controller it came with: in the controls'
+    /// menu and the MIDI button's.
+    static func resetButton(model: any InstrumentModel) -> some View {
+        Button("Every control back to its standard controller") { model.resetControllers() }
+    }
+
+    /// VoiceOver's press does what the click does; nothing for a control that
+    /// steps back (a pad's).
+    struct Accessibility: ViewModifier {
+        let parameter: Parameter
+        let model: any InstrumentModel
+        var inPlay = true
+
+        func body(content: Content) -> some View {
+            if inPlay {
+                content
+                    .accessibilityHint("Listens for the next MIDI control that moves")
+                    .accessibilityAction { listenOrStop(parameter, model: model) }
+            } else {
+                content
+            }
+        }
+    }
+}
+
+/// A click in MIDI mode: the control listens, or stops listening if it was.
+@MainActor
+private func listenOrStop(_ parameter: Parameter, model: any InstrumentModel) {
+    model.learn(model.learning == parameter ? nil : parameter)
 }

@@ -1,9 +1,10 @@
 import SwiftUI
 import BrumleCore
 
-/// Beside the pads: the khomus, "Pads", which pad is selected, and its pitch
-/// and mute group. The pitch and the group belong to the pad, not to its
-/// knobs.
+/// Beside the pads: the khomus, "Pads", which pad is selected, its pitch and
+/// mute group, and the Kit menu. The pitch and the group belong to the pad,
+/// not to its knobs; a kit is all sixteen pads, their sounds, pitches and
+/// groups.
 struct PadInspectorView: View {
 
     let model: any InstrumentModel
@@ -26,6 +27,7 @@ struct PadInspectorView: View {
             HStack(spacing: 18) {
                 labelled("Pitch") { pitchMenu(pad) }
                 labelled("Group") { groupMenu(pad) }
+                kitMenu
             }
         }
         .padding(10)
@@ -39,6 +41,27 @@ struct PadInspectorView: View {
                 .foregroundStyle(Artwork.bone)
             control()
         }
+    }
+
+    /// The player's kits, the engine's own, and the commands that save and delete them.
+    private var kitMenu: some View {
+        let library = LibraryMenuFiles(
+            entries: LibraryMenu.kits(model.kits),
+            names: model.kits,
+            saveTitle: "Save the pads as a kit",
+            saveNote: "All sixteen pads are stored: their sounds, pitches and groups.",
+            suggestedName: "",
+            load: { try model.loadKit($0) },
+            loadStandard: model.loadDefaultKit,
+            save: { try model.saveKit(as: $0) },
+            delete: { try model.deleteKit($0) })
+        return LibraryMenuView(library: library, width: 64, opening: model.lookAtPresets) {
+            Text("Kit")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .help("Your kits: load all sixteen pads from one, save them as one, delete one, or go back to the default kit")
+        .accessibilityLabel("Kit")
     }
 
     /// Every note, an octave to a submenu, the pad's own ticked.

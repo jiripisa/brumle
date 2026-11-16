@@ -14,3 +14,9 @@
 - Audio Unit instrument for Audio Unit hosts, with the app's window. The keyboard's knobs can be automated; the pads and the mode are saved with the project.
 - The Audio Unit is installed from the app's Settings.
 - The "Polar Khomus" look: a silver khomus on leather and bone, northern ornament and Liquid Glass panels.
+- Presets: save a sound as a preset from the new Preset menu and load it into the keyboard or any pad; a double-click takes a knob back to the preset's value. The app and the plug-in share the presets.
+- Kits: save all sixteen pads as a kit and load them back from the Kit menu beside the pads, or return to the default kit.
+- A pad is named after its preset, or after its program when it has none.
+- MIDI controllers: every knob and switch of the keyboard's sound follows a MIDI controller, with a standard one ready; the new MIDI button shows them and lets any control learn another with a click.
+- The plug-in saves the MIDI controllers, the presets in use and the selected pad with the project, and its window opens on that pad.
+- The LFO 1, LFO 2, VEL and MIDI buttons light up clearly while they are on.

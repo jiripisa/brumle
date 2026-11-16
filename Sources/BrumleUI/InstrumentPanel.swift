@@ -7,14 +7,17 @@ import BrumleCore
 /// (Reed, Stroke, Mouth, Breath, Master) side by side on glass, then `footer`
 /// (the pads or the keyboard). The knobs show the set the model shows: the
 /// keyboard's, or the selected pad's. With LFO 1, LFO 2 or VEL on in the
-/// header, they set that source's amounts (`KnobView`).
+/// header, they set that source's amounts; with MIDI on, they show their MIDI
+/// controllers and learn new ones (`KnobView`). A file's error shows under the
+/// header's menus for a few seconds (`ErrorNotice`), never as an alert.
 ///
 /// `trailing` joins the header on the right, after LFO 1, LFO 2 and VEL (the
 /// app's Settings button). It comes after `footer`, so that a single trailing
 /// closure is the footer: `InstrumentPanel(model:) { footer } trailing: { … }`.
 ///
 /// The panel asks the model to catch up every 40 ms: a host moves parameters
-/// without telling anyone, and pads are hit from MIDI.
+/// without telling anyone, and pads are hit from MIDI. The same beat takes the
+/// error line away when its time is up.
 /// The caller gives the panel its frame and `instrumentBackground()`.
 public struct InstrumentPanel<Footer: View, Trailing: View>: View {
 
@@ -26,24 +29,32 @@ public struct InstrumentPanel<Footer: View, Trailing: View>: View {
     private let trailing: Trailing
     private let footer: Footer
 
-    /// What the knobs edit at the moment: their values, or a source's amounts.
+    /// What the knobs edit at the moment: their values, a source's amounts, or
+    /// their controllers.
     @State private var editing: KnobEditing
 
-    /// `editing` is what the panel opens with, for a picture of that state; a
-    /// window opens with the knobs as knobs.
+    /// The error line's message while it shows.
+    @State private var notice: String?
+
+    /// `editing` is what the panel opens with, and `notice` an error line it
+    /// opens with, for a picture of that state; a window opens with the knobs
+    /// as knobs and no error.
     public init(model: any InstrumentModel,
                 showing editing: KnobEditing = .value,
+                notice: String? = nil,
                 @ViewBuilder footer: () -> Footer = { EmptyView() },
                 @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
         self.model = model
         _editing = State(initialValue: editing)
+        _notice = State(initialValue: notice)
         self.trailing = trailing()
         self.footer = footer()
     }
 
     public var body: some View {
         VStack(spacing: 10) {
-            HeaderView(model: model, editing: $editing, trailing: trailing)
+            HeaderView(model: model, editing: $editing, notice: notice, trailing: trailing)
+                .zIndex(1)              // the error line hangs over what is below
             OrnamentBand()
             // Spacing 0: glass closer than the container's spacing blends into one shape, and
             // the five groups are meant to stay apart.
@@ -64,6 +75,8 @@ public struct InstrumentPanel<Footer: View, Trailing: View>: View {
         .task {
             while !Task.isCancelled {
                 model.refresh()
+                let shown = ErrorNotice.message(model.lastError, at: model.lastErrorTime, now: .now)
+                if shown != notice { notice = shown }
                 try? await Task.sleep(for: .milliseconds(40))
             }
         }

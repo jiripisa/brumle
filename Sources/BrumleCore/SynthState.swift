@@ -7,18 +7,22 @@ public struct SetState: Codable, Equatable, Sendable {
     public var program: Int
     /// Plain values by parameter identifier.
     public var values: [String: Float]
+    /// The preset the set came from, nil for a built-in program or a sound made by hand.
+    public var preset: String?
 
-    public init(program: Int, values: [String: Float]) {
+    public init(program: Int, values: [String: Float], preset: String? = nil) {
         self.program = program
         self.values = values
+        self.preset = preset
     }
 
-    /// A field the data lacks gets its default (program 0, no values: every knob keeps its own);
-    /// a field this version does not know is ignored.
+    /// A field the data lacks gets its default (program 0, no values: every knob takes its
+    /// program's value, no preset); a field this version does not know is ignored.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         program = try container.decodeIfPresent(Int.self, forKey: .program) ?? 0
         values = try container.decodeIfPresent([String: Float].self, forKey: .values) ?? [:]
+        preset = try container.decodeIfPresent(String.self, forKey: .preset)
     }
 }
 
@@ -78,7 +82,8 @@ extension Synth {
         Float(String(format: "%.6g", Double(plain))) ?? plain
     }
 
-    private func setState(_ set: SoundSet) -> SetState {
+    /// One set's knobs as they are now, with no preset: the models remember that.
+    public func state(of set: SoundSet) -> SetState {
         SetState(program: program(in: set),
                  values: Dictionary(uniqueKeysWithValues: Parameters.all.map {
                      ($0.identifier, Self.stable(value(of: $0, in: set)))
@@ -89,14 +94,15 @@ extension Synth {
     /// mix values from different moments.
     public var state: SynthState {
         SynthState(mode: mode,
-                   keyboard: setState(.keyboard),
+                   keyboard: state(of: .keyboard),
                    pads: (0..<Int(BRUMLE_NUM_PADS)).map { pad in
-                       PadState(note: padNote(pad) ?? 0, group: padGroup(pad), set: setState(.pad(pad)))
+                       PadState(note: padNote(pad) ?? 0, group: padGroup(pad), set: state(of: .pad(pad)))
                    })
     }
 
     /// Puts a saved state in. A value for a name this version does not know is ignored, a knob the
-    /// state does not mention keeps its value, and fewer than sixteen pads leave the rest alone.
+    /// state does not mention takes the value of the state's program, and fewer than sixteen pads
+    /// leave the rest alone.
     public func apply(_ state: SynthState) {
         mode = state.mode
         apply(state.keyboard, to: .keyboard)
@@ -107,15 +113,52 @@ extension Synth {
         }
     }
 
-    private func apply(_ saved: SetState, to set: SoundSet) {
-        // Loading a program overwrites the whole set, so take the knobs the state does not mention
-        // away first and put them back after.
-        let kept = Parameters.all.filter { saved.values[$0.identifier] == nil }
-            .map { ($0, normalisedValue(of: $0, in: set)) }
-        if saved.program != program(in: set) { loadProgram(saved.program, into: set) }
-        for (parameter, normalised) in kept { setNormalisedValue(normalised, of: parameter, in: set) }
+    /// Puts one set's saved knobs in: its program first, then each value; a knob the set does not
+    /// mention takes the program's value (the octave too, which loading a program leaves alone).
+    /// The set's `preset` is not the engine's to keep: the models remember it.
+    public func apply(_ saved: SetState, to set: SoundSet) {
+        // A program number that is no program (a damaged or newer file) leaves the set's own.
+        let program = Programs.names.indices.contains(saved.program) ? saved.program : self.program(in: set)
+        if program != self.program(in: set) { loadProgram(program, into: set) }
+        for parameter in Parameters.all where saved.values[parameter.identifier] == nil {
+            setValue(Programs.value(program: program, parameter: parameter), of: parameter, in: set)
+        }
         for (identifier, plain) in saved.values {
             if let parameter = Parameters.named(identifier) { setValue(plain, of: parameter, in: set) }
+        }
+    }
+}
+
+extension SetState {
+
+    /// Every knob's plain value as `Synth.apply(_:to:)` puts the set in, by parameter index, with
+    /// the program it loads: the set's own values, kept within each knob's range and on the steps
+    /// of integers and choices, and the program's value for a knob the set does not mention. A
+    /// program number that is no program leaves `currentProgram`. For a set that goes in value by
+    /// value from outside the engine: the plug-in window sets the keyboard's as the unit's
+    /// parameters, so that a host hears of each.
+    public func resolved(currentProgram: Int) -> (program: Int, values: [Float]) {
+        let program = Programs.names.indices.contains(self.program) ? self.program : currentProgram
+        let values = Parameters.all.map { parameter -> Float in
+            guard let plain = values[parameter.identifier], plain.isFinite else {
+                return Programs.value(program: program, parameter: parameter)
+            }
+            let stepped = parameter.kind == .continuous ? plain : plain.rounded()
+            return min(max(stepped, parameter.range.lowerBound), parameter.range.upperBound)
+        }
+        return (program, values)
+    }
+}
+
+extension SynthState {
+
+    /// The preset each set came from: the keyboard's first, then the pads' in order; nil for
+    /// none. Setting it names as many pads as the state has and ignores the rest.
+    public var presetNames: [String?] {
+        get { [keyboard.preset] + pads.map(\.set.preset) }
+        set {
+            keyboard.preset = newValue.first ?? nil
+            for (pad, name) in newValue.dropFirst().prefix(pads.count).enumerated() { pads[pad].set.preset = name }
         }
     }
 }

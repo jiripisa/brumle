@@ -13,6 +13,7 @@ struct KnobEditTests {
     final class Recorder: InstrumentModel {
         enum Call: Equatable {
             case begin(String, SoundSet), end(String, SoundSet), reset(String, SoundSet)
+            case controller(String, Int?), learn(String?)
         }
         var calls: [Call] = []
         var positions: [String: Double] = [:]
@@ -40,6 +41,27 @@ struct KnobEditTests {
         func keyDown(_ note: Int, velocity: Int) {}
         func keyUp(_ note: Int) {}
         func refresh() {}
+        var presets: [String] { [] }
+        func presetInUse(in set: SoundSet) -> String? { nil }
+        func loadPreset(_ name: String, into set: SoundSet) throws {}
+        func savePreset(as name: String, from set: SoundSet) throws {}
+        func deletePreset(_ name: String) throws {}
+        func lookAtPresets() {}
+        var kits: [String] { [] }
+        func loadKit(_ name: String) throws {}
+        func loadDefaultKit() {}
+        func saveKit(as name: String) throws {}
+        func deleteKit(_ name: String) throws {}
+        func controller(of parameter: Parameter) -> Int? { nil }
+        func setController(_ controller: Int?, of parameter: Parameter) { calls.append(.controller(parameter.identifier, controller)) }
+        func resetControllers() {}
+        var learning: Parameter?
+        func learn(_ parameter: Parameter?) {
+            learning = parameter
+            calls.append(.learn(parameter?.identifier))
+        }
+        var lastError: String? { nil }
+        var lastErrorTime: ContinuousClock.Instant? { nil }
     }
 
     private let ring = Parameters.named("ring")!
@@ -100,5 +122,73 @@ struct KnobEditTests {
         let model = Recorder()
         KnobEdit.reset(ring, in: .pad(2), model: model)
         #expect(model.calls == [.begin("ring", .pad(2)), .reset("ring", .pad(2)), .end("ring", .pad(2))])
+    }
+
+    // MARK: VoiceOver
+
+    @Test("VoiceOver turns a knob a twentieth of its travel a step, as an edit of its own, and no further than its end")
+    func adjustContinuous() {
+        let model = Recorder()
+        KnobEdit.adjust(ring, in: .pad(1), isAmount: false, up: true, model: model)
+        #expect(abs(model.positions["ring"]! - 0.55) < 1e-12)
+        #expect(model.calls == [.begin("ring", .pad(1)), .end("ring", .pad(1))])
+        model.positions["ring"] = 0.98
+        KnobEdit.adjust(ring, in: .keyboard, isAmount: false, up: true, model: model)
+        #expect(model.positions["ring"] == 1)
+        model.positions["ring"] = 0.01
+        KnobEdit.adjust(ring, in: .keyboard, isAmount: false, up: false, model: model)
+        #expect(model.positions["ring"] == 0)
+    }
+
+    @Test("A knob of whole steps moves one step")
+    func adjustInteger() throws {
+        let octave = try #require(Parameters.named("octave"))
+        let model = Recorder()
+        model.positions["octave"] = Double(octave.normalised(0))
+        KnobEdit.adjust(octave, in: .keyboard, isAmount: false, up: true, model: model)
+        #expect(octave.plain(Float(model.positions["octave"]!)) == 1)
+        KnobEdit.adjust(octave, in: .keyboard, isAmount: false, up: false, model: model)
+        KnobEdit.adjust(octave, in: .keyboard, isAmount: false, up: false, model: model)
+        #expect(octave.plain(Float(model.positions["octave"]!)) == -1)
+    }
+
+    @Test("An amount stepped by VoiceOver snaps to nothing near nothing, as a drag does")
+    func adjustAmount() {
+        let model = Recorder()
+        model.positions["lfo1vowel"] = Double(amount.normalised(0)) - 0.051     // a step below nothing, by a hair
+        KnobEdit.adjust(amount, in: .keyboard, isAmount: true, up: true, model: model)
+        #expect(model.positions["lfo1vowel"] == Double(amount.normalised(0)))
+    }
+
+    // MARK: MIDI mode
+
+    @Test("A double click in MIDI mode gives the standard controller back and calls off the control's own listening")
+    func doubleClickInMIDIMode() throws {
+        let vowel = try #require(Parameters.named("vowel"))
+        let model = Recorder()
+        model.learning = vowel                                    // the first click made it listen
+        ControllerHandling.backToStandard(vowel, model: model)
+        #expect(model.calls == [.learn(nil), .controller("vowel", 74)])
+        #expect(model.learning == nil)
+
+        model.calls = []
+        model.learning = ring                                     // another control listens: it goes on
+        ControllerHandling.backToStandard(vowel, model: model)
+        #expect(model.calls == [.controller("vowel", 74)])
+        #expect(model.learning == ring)
+    }
+
+    @Test("In MIDI mode the keyboard's controls stay in play and a pad's step back; nothing sets an amount")
+    func controllerMode() throws {
+        let vowel = try #require(Parameters.named("vowel"))
+        let curve = try #require(Parameters.named("curve"))
+        #expect(KnobEditing.controller.amount(of: vowel) == nil)
+        #expect(!KnobEditing.controller.stepsBack(vowel, in: .keyboard))
+        #expect(!KnobEditing.controller.stepsBack(curve, in: .keyboard))
+        #expect(KnobEditing.controller.stepsBack(vowel, in: .pad(2)))
+        // The other modes are as they were, in either set.
+        #expect(!KnobEditing.value.stepsBack(vowel, in: .pad(2)))
+        #expect(!KnobEditing.amount(lfo: 0).stepsBack(vowel, in: .keyboard))
+        #expect(KnobEditing.velocity.stepsBack(curve, in: .keyboard))
     }
 }

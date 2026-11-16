@@ -25,10 +25,24 @@
 //   StateChanged: write only, any UInt32. The window sets it after it changed the pads or the
 //                 mode through the engine; the unit then tells the host its saved state
 //                 (kAudioUnitProperty_ClassInfo) changed, so that the project is marked edited.
+//   SelectedPad:  read/write UInt32, 0...15. The pad the window shows, so that it reopens on it;
+//                 saved with the unit's state. Any other value, or another size, is refused
+//                 (kAudioUnitErr_InvalidPropertyValue).
+//   PresetNames:  read/write CFArrayRef of 17 CFStrings: the preset each set came from, the
+//                 keyboard set's first, then pad 1...16's; "" for none. The engine does not hold
+//                 them: the window sets them, the unit keeps a copy and saves it with its state.
+//                 An array of another length or with anything but strings in it is refused
+//                 (kAudioUnitErr_InvalidPropertyValue); a name longer than a preset's (60
+//                 characters) counts as none. As for every CF-typed property, a get hands the
+//                 array over retained (+1): the caller releases it. The window uses it from the
+//                 main thread; the unit guards it with a lock of its own, since a host saves and
+//                 restores the state, names included, on a thread of its choosing.
 enum
 {
     kBrumleProperty_Engine       = 64001,
-    kBrumleProperty_StateChanged = 64002
+    kBrumleProperty_StateChanged = 64002,
+    kBrumleProperty_SelectedPad  = 64003,
+    kBrumleProperty_PresetNames  = 64004
 };
 
 #ifdef __cplusplus

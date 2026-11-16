@@ -17,11 +17,9 @@ struct AudioUnitWindow: View {
         }
         .fixedSize()                    // the panel's width, as tall as its contents
         .instrumentBackground()
-        .onDisappear {
-            // A key or pad held with the mouse would sound on: its mouse-up never comes.
-            model.releaseHeld()
-            model.tellHostIfEdited()
-        }
+        // A key or pad held with the mouse would sound on (its mouse-up never comes), and a knob
+        // would go on listening for a controller.
+        .onDisappear { model.windowClosed() }
     }
 }
 

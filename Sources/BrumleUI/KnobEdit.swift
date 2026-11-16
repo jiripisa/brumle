@@ -55,4 +55,26 @@ struct KnobEdit {
         model.resetToDefault(parameter, in: set)
         model.endEditing(parameter, in: set)
     }
+
+    /// Of a knob's travel, what one step of VoiceOver's adjust turns it.
+    static let adjustStep = 0.05
+
+    /// VoiceOver turns the knob a step up or down, as an edit of its own: a
+    /// twentieth of its travel, or one whole step of a knob that has steps.
+    static func adjust(_ parameter: Parameter, in set: SoundSet, isAmount: Bool, up: Bool, model: any InstrumentModel) {
+        let position = model.position(of: parameter, in: set)
+        var turned: Double
+        if parameter.kind == .continuous {
+            turned = min(max(position + (up ? adjustStep : -adjustStep), 0), 1)
+            if isAmount {
+                turned = Double(parameter.normalised(LFOs.snapped(amount: parameter.plain(Float(turned)))))
+            }
+        } else {
+            let plain = parameter.plain(Float(position)) + (up ? 1 : -1)
+            turned = Double(parameter.normalised(min(max(plain, parameter.range.lowerBound), parameter.range.upperBound)))
+        }
+        model.beginEditing(parameter, in: set)
+        model.setPosition(turned, of: parameter, in: set)
+        model.endEditing(parameter, in: set)
+    }
 }

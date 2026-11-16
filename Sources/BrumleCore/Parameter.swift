@@ -107,7 +107,9 @@ public enum Programs {
     }
 
     /// The plain value a program gives a parameter.
+    /// The parameter's default for a number that is no program.
     public static func value(program: Int, parameter: Parameter) -> Float {
-        brumle_program_value(Int32(program), Int32(parameter.index))
+        guard names.indices.contains(program) else { return parameter.defaultValue }
+        return brumle_program_value(Int32(program), Int32(parameter.index))
     }
 }
