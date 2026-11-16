@@ -862,16 +862,19 @@ struct AudioUnitWindowTests {
 
     // MARK: The selected pad
 
-    @Test("The window reopens on the pad it showed, which the project keeps")
+    @Test("The window reopens on the pad it showed, which the project keeps, though choosing a pad is no edit of it")
     func windowReopensOnSelectedPad() throws {
         let instrument = try Instrument()
         let model = try model(of: instrument)
         #expect(model.selectedPad == 0)
 
         try countStateChanges(of: instrument.unit) { calls in
+            model.hitPad(2, velocity: 90)                     // auditioning pads selects them
+            model.releasePad(2)
+            #expect(model.selectedPad == 2)
             model.selectedPad = 9
             model.tellHostIfEdited()
-            #expect(calls.count == 1)
+            #expect(calls.count == 0)                         // the host does not ask to save
         }
         #expect(try instrument.selectedPad() == 9)
         #expect(try self.model(of: instrument).selectedPad == 9)

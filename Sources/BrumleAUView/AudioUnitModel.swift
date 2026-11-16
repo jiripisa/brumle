@@ -88,7 +88,8 @@ public final class AudioUnitModel: InstrumentModel {
     }
 
     /// The pad the knobs edit in pad mode. The unit keeps it and saves it with the project, so a
-    /// window opens on the pad it was closed on.
+    /// window opens on the pad it was closed on. Choosing a pad is no edit of the project: it is
+    /// saved whenever the project is, without the host being told.
     public var selectedPad: Int {
         get { pad }
         set {
@@ -96,10 +97,8 @@ public final class AudioUnitModel: InstrumentModel {
             pad = newValue
             guard isAttached, PadGrid.count > newValue, newValue >= 0 else { return }
             var stored = UInt32(newValue)
-            if AudioUnitSetProperty(unit, Self.selectedPadProperty, kAudioUnitScope_Global, 0, &stored,
-                                    UInt32(MemoryLayout<UInt32>.size)) == noErr {
-                edited()
-            }
+            AudioUnitSetProperty(unit, Self.selectedPadProperty, kAudioUnitScope_Global, 0, &stored,
+                                 UInt32(MemoryLayout<UInt32>.size))
             mirror(.pad(newValue))
         }
     }
