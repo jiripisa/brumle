@@ -81,9 +81,8 @@ private struct PadTile: View {
         .padding(.horizontal, 6)
         .frame(maxWidth: .infinity)
         .frame(height: PadGridView.rowHeight)
-        .contentShape(.rect(cornerRadius: Self.corner))
-        .glassEffect(.regular.tint(lit ? Artwork.aurora.opacity(0.6) : Artwork.midnight.opacity(0.35)).interactive(),
-                     in: .rect(cornerRadius: Self.corner))
+        // The outline is part of what the glass carries, as the name is: inside the footer's
+        // GlassEffectContainer an overlay after the glass is drawn under it and does not show.
         .overlay {
             if selected {
                 RoundedRectangle(cornerRadius: Self.corner)
@@ -92,6 +91,9 @@ private struct PadTile: View {
                     .allowsHitTesting(false)
             }
         }
+        .contentShape(.rect(cornerRadius: Self.corner))
+        .glassEffect(.regular.tint(lit ? Artwork.aurora.opacity(0.6) : Artwork.midnight.opacity(0.35)).interactive(),
+                     in: .rect(cornerRadius: Self.corner))
         .shadow(color: lit ? Artwork.aurora.opacity(0.8) : .clear, radius: 10)
         .gesture(hit)
         .onChange(of: pressing) { _, isPressing in
