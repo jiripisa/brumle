@@ -203,7 +203,9 @@ struct BrumleEngine
     int  learning() const { return learning_.load(std::memory_order_relaxed); }
 
     // Counts what MIDI did behind a window's back: a knob moved by its controller, a controller learnt.
-    unsigned changes() const { return changes_.load(std::memory_order_relaxed); }
+    // Released after the knob or controller it counts, acquired here: a reader that sees the new
+    // count also sees what changed.
+    unsigned changes() const { return changes_.load(std::memory_order_acquire); }
 
     // ----- MIDI ---------------------------------------------------------------------------
     void postMidi(uint8_t status, uint8_t d1, uint8_t d2, int offset) { posted_.post(status, d1, d2, offset); }   // any thread
@@ -408,7 +410,7 @@ private:
                 keyView_.v[i] = p.toPlain(keyNorm_[i]);
                 changed = true;
             }
-        if (changed) changes_.fetch_add(1, std::memory_order_relaxed);
+        if (changed) changes_.fetch_add(1, std::memory_order_release);
     }
 
     // Before a hit: if BRUMLE_MAX_VOICES voices sound, the quietest of them is choked, in

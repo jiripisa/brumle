@@ -160,7 +160,9 @@ void brumle_reset_controllers(BrumleEngine*);             // every knob back to 
 void brumle_learn(BrumleEngine*, int param);
 int  brumle_learning(const BrumleEngine*);               // the knob that is learning, -1 for none
 // Counts what MIDI changed without the caller: a knob moved by its controller, a controller
-// learnt. A window compares it with what it saw last to know when to read the engine again.
+// learnt. A window compares it with what it saw last to know when to read the engine again: the
+// count is raised after the change (release) and read with acquire, so a window that sees it rise
+// reads the new values.
 unsigned brumle_changes(const BrumleEngine*);
 
 // Renders `frames` samples. `right` may be NULL: left then gets the left channel.
