@@ -648,6 +648,31 @@ struct AudioUnitWindowTests {
         #expect(try instrument.presetNames()[0] == "")
     }
 
+    @Test("A program the host chooses with the window closed is saved with no keyboard preset in use; the pads keep theirs")
+    func hostProgramWithTheWindowClosed() throws {
+        let files = PresetShelvesTests.libraries()
+        defer { remove(files) }
+        let instrument = try Instrument()
+        let model = try model(of: instrument, files: files)
+        try makeASound(with: model)
+        try model.savePreset(as: "Mine", from: .keyboard)
+        try model.loadPreset("Mine", into: .pad(3))
+        model.windowClosed()
+
+        try instrument.loadPreset(4)                          // the host's preset menu, no window to see it
+        let state = try instrument.classInfo()
+        let pads = try #require((state as? [String: Any])?["brumle-pads"] as? [String: Any])
+        #expect(pads["keyboardPreset"] as? String == "")
+
+        let reopened = try Instrument()
+        try reopened.restore(state)
+        #expect(try reopened.presetNames()[0] == "")
+        #expect(try reopened.presetNames()[4] == "Mine")
+        let window = try self.model(of: reopened, files: files)
+        #expect(window.presetInUse(in: .keyboard) == nil)
+        #expect(window.presetInUse(in: .pad(3)) == "Mine")
+    }
+
     @Test("A preset or a kit saved in another window shows up after a look at the folders")
     func presetsOfAnotherWindow() throws {
         let files = PresetShelvesTests.libraries()

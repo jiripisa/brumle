@@ -511,12 +511,14 @@ public:
     // A program loads into the keyboard set, as the unit's parameters are; the pads keep theirs.
     // Only the render thread writes the keyboard set's values (from applied_): it sees the
     // parameters change as it sees any host change and sets the values the program just put in.
-    // Here the engine only records which program the set now holds.
+    // Here the engine only records which program the set now holds. The host's program ends the
+    // keyboard's preset in use, open window or not, so a project saved now does not name it.
     OSStatus NewFactoryPresetSet(const AUPreset& preset) override
     {
         const SInt32 number = preset.presetNumber;
         if (number < 0 || number >= brumle_num_programs()) return kAudioUnitErr_InvalidPropertyValue;
         brumle_set_program_index(engine_, BRUMLE_KEYBOARD_SET, number);
+        forgetKeyboardPreset();
         for (int i = 0; i < brumle_num_params(); ++i)
         {
             if (!brumle_program_sets(i)) continue;           // Octave stays where the player put it
@@ -635,6 +637,20 @@ private:
     {
         auto replaced = ausdk::Owned<CFArrayRef>::from_create(names);
         std::lock_guard<std::mutex> lock(presetNamesLock_);
+        std::swap(presetNames_, replaced);
+    }
+
+    // The keyboard set's name taken out of the presets in use, the pads' left as they are. Read
+    // and replaced under one hold of the lock, so a list the window sets meanwhile is not lost;
+    // the list replaced is released outside it.
+    void forgetKeyboardPreset()
+    {
+        ausdk::Owned<CFArrayRef> replaced;
+        std::lock_guard<std::mutex> lock(presetNamesLock_);
+        CFMutableArrayRef names = CFArrayCreateMutableCopy(nullptr, BRUMLE_NUM_SETS, *presetNames_);
+        CFArraySetValueAtIndex(names, BRUMLE_KEYBOARD_SET, CFSTR(""));
+        replaced = ausdk::Owned<CFArrayRef>::from_create(CFArrayCreateCopy(nullptr, names));
+        CFRelease(names);
         std::swap(presetNames_, replaced);
     }
 
