@@ -85,3 +85,16 @@ struct OutputChannelsTests {
         #expect(OutputChannels.map(firstChannel: -2, deviceChannels: 4) == [0, 1, -1, -1])
     }
 }
+
+@Suite("Output devices")
+struct OutputDevicesTests {
+
+    @Test("The process's own default-device aggregate is not offered; real devices are")
+    func privateAggregate() {
+        #expect(!OutputDevices.isChoosable(uid: "CADefaultDeviceAggregate-4711-0"))
+        #expect(!OutputDevices.isChoosable(uid: "CADefaultDeviceAggregate-12-3"))
+        #expect(OutputDevices.isChoosable(uid: "BuiltInSpeakerDevice"))
+        #expect(OutputDevices.isChoosable(uid: "AppleUSBAudioEngine:Focusrite:Scarlett 2i2:1234:1,2"))
+        #expect(OutputDevices.isChoosable(uid: "My CADefaultDeviceAggregate"))     // only as a prefix
+    }
+}

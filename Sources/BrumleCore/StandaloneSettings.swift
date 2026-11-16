@@ -91,3 +91,14 @@ public enum OutputChannels {
         return map
     }
 }
+
+/// Which output devices the standalone app offers.
+public enum OutputDevices {
+
+    /// Whether a device with this UID is one to choose. Core Audio gives the process a private
+    /// aggregate of its own for the default output (`CADefaultDeviceAggregate-<pid>-<n>`); that
+    /// is no device a musician picks.
+    public static func isChoosable(uid: String) -> Bool {
+        !uid.hasPrefix("CADefaultDeviceAggregate")
+    }
+}

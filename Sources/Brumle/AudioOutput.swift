@@ -174,7 +174,7 @@ final class AudioOutput {
 
     // MARK: Device list
 
-    /// Every device with at least one output channel.
+    /// Every device with at least one output channel, but the process's own private aggregate.
     static func devices() -> [AudioDevice] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
@@ -188,7 +188,8 @@ final class AudioOutput {
             let channels = outputChannelCount(of: id)
             guard channels > 0,
                   let name = string(of: id, selector: kAudioObjectPropertyName),
-                  let uid = string(of: id, selector: kAudioDevicePropertyDeviceUID) else { return nil }
+                  let uid = string(of: id, selector: kAudioDevicePropertyDeviceUID),
+                  OutputDevices.isChoosable(uid: uid) else { return nil }
             return AudioDevice(id: id, uid: uid, name: name, outputChannels: channels)
         }
     }
