@@ -255,6 +255,24 @@ struct AudioUnitTests {
         #expect(brumle_get_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(octave.index)) == 1)
     }
 
+    @Test("A knob set back before the next render after a factory preset is what the engine plays")
+    func factoryPresetThenRevert() throws {
+        let instrument = try Instrument()
+        let engine = try instrument.engine()
+        let ring = try #require(Parameters.named("ring"))
+        _ = try instrument.render()
+        let before = try instrument.parameter(ring.index)
+        try #require(Programs.value(program: 2, parameter: ring) != before)
+
+        try instrument.loadPreset(2)
+        try instrument.setParameter("ring", to: before)         // automation, a reset or a click, within one buffer
+        _ = try instrument.render()
+
+        #expect(try instrument.parameter(ring.index) == before)
+        #expect(abs(brumle_get_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(ring.index)) - before) < 0.001)
+        #expect(brumle_get_program(engine, Int32(BRUMLE_KEYBOARD_SET)) == 2)
+    }
+
     // MARK: Saved state
 
     @Test("The saved state brings back the keyboard set, the pads and the mode")
