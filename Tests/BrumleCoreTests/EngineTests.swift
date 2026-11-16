@@ -336,6 +336,12 @@ struct EngineTests: EngineHarness {
             }
             let best = (0...64).max { correlation($0) < correlation($1) }!
             #expect(abs(best - latency) <= 1, "\(rate) Hz: best lag \(best), latency \(latency)")
+            // The decimator has unit gain: the host-rate output is the doubled-rate output taken every
+            // second sample and delayed by the latency, to within -60 dB.
+            let aligned = (latency..<(y.count - 64)).map { y[$0] }
+            let taken = (latency..<(y.count - 64)).map { z[2 * ($0 - latency)] }
+            let residual = residualDb(aligned, taken)
+            #expect(residual < -60, "\(rate) Hz: the decimated output differs from the doubled-rate one by \(residual) dB")
         }
         for rate in [88_200.0, 96_000, 192_000] {
             let engine = makeEngine(rate: rate)
@@ -454,6 +460,42 @@ struct EngineTests: EngineHarness {
             (0..<Int32(BRUMLE_NUM_PADS)).map { (Int32(BRUMLE_FIRST_PAD_NOTE) + $0, Int32(127 - 3 * ((Int($0) + step) % 16))) }
         }
         flood(rate: rate, mode: Int32(BRUMLE_MODE_KEYBOARD)) { step in [(Int32(36 + step % 24), Int32(127))] }
+    }
+
+    // Keys ring for 15 s while the pads are flooded: the pool of 16 is shared by both origins, so
+    // the pads steal keyboard voices and one another, and never more than 16 sound.
+    @Test("Pads flooded over ringing keys stay within 16 voices", arguments: [44_100.0, 96_000])
+    func mixedFloodStaysBounded(rate: Double) {
+        let engine = makeEngine(rate: rate)
+        defer { brumle_destroy(engine) }
+        for set: Int32 in 0..<Int32(BRUMLE_NUM_SETS) { brumle_set_plain(engine, set, Self.index("ring"), 15) }
+        for pad: Int32 in 0..<Int32(BRUMLE_NUM_PADS) { brumle_set_pad_group(engine, pad, 0) }
+        for key: Int32 in 0..<12 { brumle_midi(engine, 0x90, 48 + key, 100, 0) }       // twelve keys ring
+        var out = render(engine, seconds: 0.2, at: rate)
+        #expect(brumle_sounding_voices(engine) == 12)
+        brumle_set_mode(engine, Int32(BRUMLE_MODE_PADS))
+        let step = 60.0 / 120 / 8, total = Self.frames(3, at: rate)
+        var nextStep = 0, start = 0, mostSounding: Int32 = 0
+        var padOut = [Float](repeating: 0, count: total)
+        padOut.withUnsafeMutableBufferPointer { buffer in
+            while start < total {
+                let count = min(128, total - start)
+                while Self.frames(Double(nextStep) * step, at: rate) < start + count {
+                    let offset = Int32(Self.frames(Double(nextStep) * step, at: rate) - start)
+                    for pad: Int32 in 0..<Int32(BRUMLE_NUM_PADS) {
+                        brumle_midi(engine, 0x90, Int32(BRUMLE_FIRST_PAD_NOTE) + pad, Int32(127 - 3 * ((Int(pad) + nextStep) % 16)), offset)
+                    }
+                    nextStep += 1
+                }
+                brumle_process(engine, buffer.baseAddress! + start, nil, Int32(count))
+                mostSounding = max(mostSounding, brumle_sounding_voices(engine))
+                #expect(brumle_sounding_voices(engine) <= Int32(BRUMLE_MAX_VOICES))
+                start += count
+            }
+        }
+        out += padOut
+        #expect(mostSounding <= Int32(BRUMLE_MAX_VOICES), "\(rate) Hz: \(mostSounding) voices sounded")
+        #expect(out.allSatisfy { $0.isFinite }, "\(rate) Hz: NaN or Inf")
     }
 
     // Sixteen keys ring, the first one soft, and a 17th steals the soft key's voice: what is heard

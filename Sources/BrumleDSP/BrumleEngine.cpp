@@ -185,7 +185,6 @@ struct BrumleEngine
     void prepare(double sampleRate)
     {
         if (!(sampleRate > 0.0) || !std::isfinite(sampleRate)) return;
-        hostRate_ = sampleRate;
         oversampling_ = sampleRate < kOversampleBelow ? 2 : 1;
         internalRate_ = sampleRate * oversampling_;
         dcCoeff_ = (float)(1.0 - 48.0 / internalRate_);    // 0.9995 at 96 kHz, the prototype's
@@ -512,7 +511,7 @@ private:
     int       numEvents_ = 0;
 
     // --- audio thread ----------------------------------------------------------------------
-    double hostRate_ = 44100.0, internalRate_ = 88200.0;
+    double internalRate_ = 88200.0;
     int    oversampling_ = 2;                                 // internal samples per host frame
     float  dcCoeff_ = 0.9995f;
     float  keyNorm_[kNumParams] = {};
