@@ -97,6 +97,9 @@ void  brumle_set_normalised(BrumleEngine*, int set, int index, float n);
 // belongs to the player's hands, not to the sound.
 void  brumle_set_program(BrumleEngine*, int set, int program);
 int   brumle_get_program(const BrumleEngine*, int set);
+// Records which program a set last loaded without loading it: no knob changes. For restoring saved
+// state whose knob values come from elsewhere. A bad set or program is ignored.
+void  brumle_set_program_index(BrumleEngine*, int set, int program);
 
 // The mode: the keyboard plays the keyboard set at the pitch of each key; the pads play their
 // own sets at the pitch of each pad, hit by notes 36-51 (other notes are ignored). A voice
@@ -112,6 +115,9 @@ int   brumle_pad_note(const BrumleEngine*, int pad);
 void  brumle_set_pad_note(BrumleEngine*, int pad, int note);
 int   brumle_pad_group(const BrumleEngine*, int pad);
 void  brumle_set_pad_group(BrumleEngine*, int pad, int group);   // 0 = Off
+// How many times a pad has been hit since the engine was created: the panel flashes a pad when it
+// changes. Counted on the audio thread; a reset leaves it alone. 0 for a bad pad.
+int   brumle_pad_hits(const BrumleEngine*, int pad);
 int   brumle_last_note(const BrumleEngine*);          // last keyboard-mode note-on since the last reset, -1 if none
 // Copies the keyboard set (and its program) and the pitch of the last note (36 if none) to a
 // pad; its group is kept. The copy goes value by value with relaxed atomics, not as a whole: a pad

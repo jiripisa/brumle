@@ -77,6 +77,18 @@ struct ParameterTableTests {
         #expect(LFOs.label(amount: -30) == "−30 %" && LFOs.snapped(amount: 0.5) == 0)
     }
 
+    @Test("The arcs a knob shows: an LFO sweeps both ways, a softer hit moves one way")
+    func arcs() {
+        #expect(LFOs.arc(position: 0.5, amount: 25) == 0.25...0.75)
+        #expect(LFOs.arc(position: 0.875, amount: -25) == 0.625...1)
+        // The knob is where the hardest hit stands; a positive amount means a softer hit is lower.
+        #expect(Velocity.arc(position: 0.5, amount: 25) == 0.25...0.5)
+        #expect(Velocity.arc(position: 0.5, amount: -25) == 0.5...0.75)
+        #expect(Velocity.arc(position: 0.125, amount: 50) == 0...0.125)
+        #expect(Velocity.arc(position: 0.875, amount: -50) == 0.875...1)
+        #expect(Velocity.arc(position: 0.375, amount: 0) == 0.375...0.375)
+    }
+
     @Test("Programs are the prototype's and leave Octave alone")
     func programs() {
         #expect(Programs.names == ["Brumle","Molln","Khomus","Morsing","Đàn Môi","Bamboo","Genggong"])

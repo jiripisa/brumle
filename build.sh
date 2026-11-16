@@ -60,6 +60,35 @@ cp "$SPM_BUILD_DIR/$SPM_CONFIG/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
 # Copy Info.plist
 cp "Resources/Info.plist" "$APP_BUNDLE/Contents/"
 
+# Window artwork (background, khomus, logo, knob cap, ornament)
+if [ -d "Resources/Art" ]; then
+    cp -R "Resources/Art" "$APP_BUNDLE/Contents/Resources/Art"
+fi
+
+# --- Audio Unit ---
+# The AUv2 plug-in ships inside the app (Contents/PlugIns); the app's settings
+# window installs it into ~/Library/Audio/Plug-Ins/Components. Its version
+# comes from the app's Info.plist: one place to bump.
+COMPONENT="$APP_BUNDLE/Contents/PlugIns/$APP_NAME.component"
+mkdir -p "$COMPONENT/Contents/MacOS"
+cp "$SPM_BUILD_DIR/$SPM_CONFIG/lib${APP_NAME}AU.dylib" "$COMPONENT/Contents/MacOS/$APP_NAME"
+cp "Resources/AudioUnit-Info.plist" "$COMPONENT/Contents/Info.plist"
+echo -n "BNDL????" > "$COMPONENT/Contents/PkgInfo"
+APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
+IFS=. read -r V_MAJOR V_MINOR V_PATCH <<< "$APP_VERSION"
+AU_VERSION=$(( (10#${V_MAJOR:-0} << 16) | (10#${V_MINOR:-0} << 8) | 10#${V_PATCH:-0} ))
+/usr/libexec/PlistBuddy \
+    -c "Set :CFBundleShortVersionString $APP_VERSION" \
+    -c "Set :CFBundleVersion $APP_VERSION" \
+    -c "Set :AudioComponents:0:version $AU_VERSION" \
+    "$COMPONENT/Contents/Info.plist"
+
+# The plug-in's own window shows the same artwork as the app's.
+if [ -d "Resources/Art" ]; then
+    mkdir -p "$COMPONENT/Contents/Resources"
+    cp -R "Resources/Art" "$COMPONENT/Contents/Resources/Art"
+fi
+
 # Embed Sparkle (auto-update). The app is unsandboxed, so the XPC services
 # (only needed by sandboxed apps) are left out.
 SPARKLE_SRC=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
@@ -68,14 +97,25 @@ mkdir -p "$APP_BUNDLE/Contents/Frameworks"
 ditto "$SPARKLE_SRC" "$SPARKLE_FW"
 rm -rf "$SPARKLE_FW/Versions/B/XPCServices" "$SPARKLE_FW/XPCServices"
 
+# codesign --force without its "replacing existing signature" lines. A failed
+# signature stops the build and shows what codesign said.
+sign() {
+    local output
+    if ! output=$(codesign --force "$@" 2>&1); then
+        echo "$output" >&2
+        echo "ERROR: codesign failed (codesign --force $*)" >&2
+        return 1
+    fi
+    printf '%s' "$output" | grep -v "replacing existing signature" || true
+}
+
 # Sign Sparkle's pieces inside-out, then the framework (identity "-" = ad-hoc).
 sign_sparkle() {
     local identity="$1"; shift
     for item in "$SPARKLE_FW/Versions/B/Autoupdate" \
                 "$SPARKLE_FW/Versions/B/Updater.app" \
                 "$SPARKLE_FW"; do
-        codesign --force "$@" --sign "$identity" "$item" 2>&1 \
-            | grep -v "replacing existing signature" || true
+        sign "$@" --sign "$identity" "$item"
     done
 }
 
@@ -108,10 +148,10 @@ xattr -cr "$APP_BUNDLE"
 
 # Ad-hoc sign with entitlements for debug/release (TCC needs entitlements
 # baked into the binary signature, not just present in the bundle).
+# Inside-out: Sparkle and the Audio Unit before the app that holds them.
 sign_sparkle -
-codesign --force --sign - \
-    --entitlements "Resources/$APP_NAME.entitlements" \
-    "$APP_BUNDLE" 2>&1 | grep -v "replacing existing signature" || true
+sign --sign - "$COMPONENT"
+sign --sign - --entitlements "Resources/$APP_NAME.entitlements" "$APP_BUNDLE"
 
 echo "Build complete: $APP_BUNDLE"
 
@@ -132,6 +172,7 @@ fi
 echo "Signing with: $IDENTITY"
 
 sign_sparkle "$IDENTITY" --options runtime --timestamp
+codesign --force --options runtime --timestamp --sign "$IDENTITY" "$COMPONENT"
 codesign --force --options runtime --timestamp \
     --entitlements "Resources/$APP_NAME.entitlements" \
     --sign "$IDENTITY" \

@@ -2,7 +2,7 @@ import BrumleDSP
 
 /// What the keyboard plays: the keyboard's own sound at the pitch of each key, or the sixteen
 /// pads, each with a sound and a pitch of its own, hit by notes 36-51.
-public enum PlayMode: Int, Sendable {
+public enum PlayMode: Int, Codable, Sendable {
     case keyboard = 0
     case pads = 1
 }
@@ -40,14 +40,25 @@ public final class Synth: @unchecked Sendable {
     /// The engine. Internal, so that the rest of the core can add to what a synth offers.
     let engine: OpaquePointer
 
+    /// False for a synth that wraps an engine somebody else owns.
+    private let ownsEngine: Bool
+
     public init(sampleRate: Double = 44_100) {
         engine = brumle_create()
+        ownsEngine = true
         brumle_prepare(engine, sampleRate)
         brumle_reset(engine)
     }
 
+    /// Wraps an engine the caller owns, such as the Audio Unit's: nothing is prepared, and the
+    /// engine is not destroyed with the synth, which must not outlive it.
+    public init(borrowing engine: OpaquePointer) {
+        self.engine = engine
+        ownsEngine = false
+    }
+
     deinit {
-        brumle_destroy(engine)
+        if ownsEngine { brumle_destroy(engine) }
     }
 
     /// Call before audio starts and whenever the sample rate changes. Like the engine's prepare,
@@ -122,6 +133,13 @@ public final class Synth: @unchecked Sendable {
     public func setPadGroup(_ group: Int?, pad: Int) {
         guard let index = Self.padIndex(pad) else { return }
         brumle_set_pad_group(engine, index, Int32(group ?? 0))
+    }
+
+    /// How many times a pad has been hit since the engine was created, counted on the audio
+    /// thread; 0 for a pad outside 0...15. The panel flashes a pad when it changes.
+    public func padHits(_ pad: Int) -> Int {
+        guard let index = Self.padIndex(pad) else { return 0 }
+        return Int(brumle_pad_hits(engine, index))
     }
 
     /// The last note played in keyboard mode since the last reset; nil if none.

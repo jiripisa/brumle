@@ -221,6 +221,24 @@ struct EngineTests: EngineHarness {
         #expect(brumle_get_normalised(engine, 16, ring) == 0.25)
     }
 
+    @Test("Recording a set's program changes no knob")
+    func programIndexOnly() {
+        let engine = makeEngine()
+        defer { brumle_destroy(engine) }
+        let ring = Self.index("ring")
+        brumle_set_plain(engine, 4, ring, 1)
+        brumle_set_program_index(engine, 4, 2)
+        #expect(brumle_get_program(engine, 4) == 2)
+        #expect(abs(brumle_get_plain(engine, 4, ring) - 1) < 1e-5)
+        brumle_set_program_index(engine, 4, -1)
+        brumle_set_program_index(engine, 4, brumle_num_programs())
+        #expect(brumle_get_program(engine, 4) == 2)
+        brumle_set_program_index(engine, -1, 1)
+        brumle_set_program_index(engine, 17, 1)
+        brumle_set_program_index(nil, 0, 1)
+        #expect(brumle_get_program(engine, Self.keyboard) == 0)
+    }
+
     @Test("The C interface tolerates a null engine and indices out of range")
     func outOfRange() {
         let engine = makeEngine()
@@ -570,5 +588,28 @@ struct EngineTests: EngineHarness {
         }
         let r = residualDb(play(releasing: false), play(releasing: true))
         #expect(r < -100, "residual \(r) dB")
+    }
+
+    @Test("Pad hits are counted per pad, in pad mode only")
+    func padHitsCount() {
+        let synth = Synth(sampleRate: Self.rate)
+        func play(_ frames: Int = 512) {
+            var out = [Float](repeating: 0, count: frames)
+            out.withUnsafeMutableBufferPointer { synth.render(left: $0.baseAddress!, right: nil, frames: frames) }
+        }
+        synth.noteOn(36)                                   // keyboard mode: no pad is hit
+        play()
+        #expect((0..<16).allSatisfy { synth.padHits($0) == 0 })
+        synth.mode = .pads
+        synth.noteOn(36); play()
+        synth.noteOn(36); play()
+        synth.noteOn(37); play()
+        #expect(synth.padHits(0) == 2 && synth.padHits(1) == 1 && synth.padHits(2) == 0)
+        synth.noteOn(60); play()                           // outside 36-51: ignored in pad mode
+        #expect(synth.padHits(0) == 2)
+        synth.prepare(sampleRate: Self.rate)               // a reset leaves the count alone
+        #expect(synth.padHits(0) == 2)
+        #expect(synth.padHits(-1) == 0 && synth.padHits(16) == 0)
+        #expect(brumle_pad_hits(nil, 0) == 0)
     }
 }

@@ -4,17 +4,20 @@ import SwiftUI
 struct BrumleApp: App {
 
     @State private var updates = UpdateService()
+    @State private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        Window("Brumle", id: "main") {
+            ContentView(model: model)
         }
+        .windowResizability(.contentSize)
         .commands {
             // Auto-update: manual check next to About.
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { updates.checkNow() }
                     .disabled(!updates.canCheck)
             }
+            CommandGroup(replacing: .newItem) {}
         }
     }
 }

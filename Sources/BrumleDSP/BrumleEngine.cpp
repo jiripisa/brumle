@@ -126,6 +126,10 @@ struct BrumleEngine
         for (int i = 0; i < kNumParams; ++i)
             if (programSets(i)) this->set(set, i, p.values[i]);
     }
+    void setProgramIndex(int set, int index)
+    {
+        if (index >= 0 && index < (int)programs().size()) program_[set].store(index, std::memory_order_relaxed);
+    }
     int program(int set) const { return program_[set].load(std::memory_order_relaxed); }
 
     void setMode(int mode)
@@ -136,6 +140,7 @@ struct BrumleEngine
 
     int  padNote(int pad) const { return padNote_[pad].load(std::memory_order_relaxed); }
     void setPadNote(int pad, int note) { if (note >= 0 && note <= 127) padNote_[pad].store(note, std::memory_order_relaxed); }
+    int  padHits(int pad) const { return padHits_[pad].load(std::memory_order_relaxed); }
     int  padGroup(int pad) const { return padGroup_[pad].load(std::memory_order_relaxed); }
     void setPadGroup(int pad, int group) { if (group >= 0 && group <= BRUMLE_NUM_GROUPS) padGroup_[pad].store(group, std::memory_order_relaxed); }
 
@@ -422,6 +427,7 @@ private:
                 v.choke(v.knob(kDamp));
         makeRoom();
         Voice& slot = freeSlot();
+        padHits_[pad].fetch_add(1, std::memory_order_relaxed);
         slot.take(Origin{ kOriginPad, note, pad, group }, padNote(pad), velocity);
         const int set = padSet(pad);
         for (int i = 0; i < kNumParams; ++i)        // the pad's set, frozen at the hit
@@ -506,6 +512,7 @@ private:
     std::atomic<int>   mode_{BRUMLE_MODE_KEYBOARD};
     std::atomic<int>   padNote_[BRUMLE_NUM_PADS];
     std::atomic<int>   padGroup_[BRUMLE_NUM_PADS];
+    std::atomic<int>   padHits_[BRUMLE_NUM_PADS] = {};     // pad hits since creation; reset leaves them
     std::atomic<int>   lastNote_{-1};
     std::atomic<int>   sounding_{0};
     std::atomic<int>   latency_{0};
@@ -629,6 +636,7 @@ void brumle_set_normalised(BrumleEngine* e, int set, int index, float n)
 }
 void brumle_set_program(BrumleEngine* e, int set, int program) { if (e && validSet(set)) e->setProgram(set, program); }
 int  brumle_get_program(const BrumleEngine* e, int set) { return e && validSet(set) ? e->program(set) : 0; }
+void brumle_set_program_index(BrumleEngine* e, int set, int program) { if (e && validSet(set)) e->setProgramIndex(set, program); }
 void brumle_set_mode(BrumleEngine* e, int mode) { if (e) e->setMode(mode); }
 int  brumle_get_mode(const BrumleEngine* e) { return e ? e->mode() : BRUMLE_MODE_KEYBOARD; }
 
@@ -636,6 +644,7 @@ int  brumle_pad_note(const BrumleEngine* e, int pad) { return e && validPad(pad)
 void brumle_set_pad_note(BrumleEngine* e, int pad, int note) { if (e && validPad(pad)) e->setPadNote(pad, note); }
 int  brumle_pad_group(const BrumleEngine* e, int pad) { return e && validPad(pad) ? e->padGroup(pad) : 0; }
 void brumle_set_pad_group(BrumleEngine* e, int pad, int group) { if (e && validPad(pad)) e->setPadGroup(pad, group); }
+int  brumle_pad_hits(const BrumleEngine* e, int pad) { return e && validPad(pad) ? e->padHits(pad) : 0; }
 int  brumle_last_note(const BrumleEngine* e) { return e ? e->lastNote() : -1; }
 void brumle_send_to_pad(BrumleEngine* e, int pad) { if (e && validPad(pad)) e->sendToPad(pad); }
 void brumle_load_default_kit(BrumleEngine* e) { if (e) e->loadDefaultKit(); }
