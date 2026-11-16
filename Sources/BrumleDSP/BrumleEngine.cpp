@@ -214,8 +214,13 @@ struct BrumleEngine
     {
         if (resetPending_.exchange(false, std::memory_order_acq_rel)) reset();
 
-        // MIDI posted from other threads joins this block at its sample offset.
-        posted_.drain([this](const MidiEvent& e) { midi(e.status, e.data1, e.data2, e.sampleOffset); });
+        // MIDI posted from other threads joins this block at its sample offset, as long as the
+        // block has room for it; the rest stays in the queue and plays in the next block.
+        posted_.drain([this](const MidiEvent& e) {
+            if (numEvents_ >= kMaxEvents) return false;
+            midi(e.status, e.data1, e.data2, e.sampleOffset);
+            return true;
+        });
 
         readKeyboardSet();
 

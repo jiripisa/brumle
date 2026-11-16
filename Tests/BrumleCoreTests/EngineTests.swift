@@ -181,6 +181,21 @@ struct EngineTests: EngineHarness {
         #expect(brumle_last_note(engine) == 36)
     }
 
+    // A block plays at most 256 events. Posted ones beyond that wait for the next block, so a
+    // dense controller stream (a large offline block) does not lose the note-off at its end.
+    @Test("MIDI posted beyond a block's 256 events plays in the next block")
+    func postedMidiBeyondABlock() {
+        let engine = makeEngine(Self.dry.merging(["keyup": 1]) { $1 })
+        defer { brumle_destroy(engine) }
+        brumle_post_midi(engine, 0x90, 36, 110, 0)
+        for _ in 0..<298 { brumle_post_midi(engine, 0xB0, 1, 0, 0) }    // the mod wheel at rest
+        brumle_post_midi(engine, 0x80, 36, 0, 0)                         // the 300th event
+        _ = render(engine, frames: 128)
+        #expect(brumle_sounding_voices(engine) == 1, "the note did not start, or its note-off played in the first block")
+        _ = render(engine, frames: 128)
+        #expect(brumle_sounding_voices(engine) == 0, "the note-off was lost")
+    }
+
     @Test("MIDI at a sample offset starts the hit at that sample")
     func sampleOffset() {
         let engine = makeEngine(Self.plain)

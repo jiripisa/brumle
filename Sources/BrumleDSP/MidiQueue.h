@@ -57,7 +57,8 @@ public:
         }
     }
 
-    // Hands every event that is in to `take`, in the order posted (audio thread). Reading stops
+    // Hands the events that are in to `take`, in the order posted (audio thread), until `take`
+    // returns false: that event stays in the queue, first for the next drain. Reading also stops
     // at the first slot whose event is not in yet, so the order is kept.
     template <class Take> void drain(Take&& take)
     {
@@ -65,7 +66,7 @@ public:
         {
             Slot& slot = slots_[read_ % kSize];
             if (slot.turn.load(std::memory_order_acquire) != read_ + 1) break;
-            take(slot.event);
+            if (!take(slot.event)) break;
             slot.turn.store(read_ + kSize, std::memory_order_release);     // free for the next lap
             ++read_;
         }

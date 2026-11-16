@@ -76,6 +76,8 @@ int         brumle_program_sets(int param);           // 0 for "octave", which p
 // ----- one engine ---------------------------------------------------------------------------
 BrumleEngine* brumle_create(void);
 void          brumle_destroy(BrumleEngine*);
+// Sets the host sample rate and then resets the engine as brumle_reset() does. A rate that is not
+// positive and finite is ignored, and nothing is reset.
 void          brumle_prepare(BrumleEngine*, double sampleRate);
 // Silences every voice, puts the wheels at rest and forgets the last note. The knob sets, the
 // pads (notes, groups) and the mode stay as they are.
@@ -127,6 +129,10 @@ int   brumle_sounding_voices(const BrumleEngine*);    // voices playing and not 
 void  brumle_post_midi(BrumleEngine*, int status, int data1, int data2, int sampleOffset);
 // MIDI from the audio thread with a sample offset into the next brumle_process() call.
 void  brumle_midi(BrumleEngine*, int status, int data1, int data2, int sampleOffset);
+// One brumle_process() call plays at most 256 events. Those from brumle_midi() take that room
+// first, and any beyond it are dropped. Posted events beyond it stay queued and play in the next
+// call, in the order posted, at their sample offset into that call. The queue holds 512 posted
+// events; an event posted while it is full is dropped.
 
 // Renders `frames` samples. `right` may be NULL: left then gets the left channel.
 void  brumle_process(BrumleEngine*, float* left, float* right, int frames);
