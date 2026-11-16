@@ -26,6 +26,8 @@ public struct FileLibrary<Content: Codable & Sendable>: Sendable {
     public let folder: URL
     public let fileExtension: String
     private let deletesForGood: Bool
+    /// How a file takes another name. A test puts a failing one here.
+    var rename: @Sendable (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) }
 
     /// `deletesForGood` removes a deleted file instead of moving it to the Trash (for tests,
     /// which have no business in anybody's Trash).
@@ -92,17 +94,11 @@ public struct FileLibrary<Content: Codable & Sendable>: Sendable {
             try data.write(to: file(of: name), options: .atomic)
             return name
         }
-        // The same name with other capitals (one file on a case-insensitive disk): write the new
-        // content aside first, and only when that has worked take the old spelling's file away.
-        let aside = folder.appendingPathComponent(".saving-\(UUID().uuidString)")
-        try data.write(to: aside, options: .atomic)
-        do {
-            try files.removeItem(at: file(of: old))
-            try files.moveItem(at: aside, to: file(of: name))
-        } catch {
-            try? files.removeItem(at: aside)
-            throw error
-        }
+        // The same name with other capitals (one file on a case-insensitive disk): the new content
+        // goes over the old spelling's file, as any save does, and then the file takes the new
+        // capitals. Should the rename fail, the content is saved all the same, under the old ones.
+        try data.write(to: file(of: old), options: .atomic)
+        try rename(file(of: old), file(of: name))
         return name
     }
 

@@ -95,6 +95,19 @@ struct PresetLibraryTests {
         #expect(!PresetLibrary.name("drones", isAmong: library.names()))
     }
 
+    @Test("A save in other capitals whose rename fails keeps the new sound under the old capitals, and says why")
+    func collisionWhoseRenameFails() throws {
+        var library = Self.library()
+        defer { remove(library) }
+        try library.save(SetState(program: 0, values: [:]), as: "Drone")
+        let sound = try sound()
+        library.rename = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        #expect(throws: CocoaError(.fileWriteNoPermission)) { try library.save(sound, as: "drone") }
+        #expect(library.names() == ["Drone"])
+        #expect(try library.load("Drone").values["vowel"] == 777)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: library.folder.path) == ["Drone.brumle"])   // nothing left aside
+    }
+
     @Test("Deleting takes the preset out of the folder; one that is not there cannot be deleted or read")
     func deleting() throws {
         let library = Self.library()
