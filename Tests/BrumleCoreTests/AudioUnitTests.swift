@@ -34,13 +34,14 @@ final class Instrument {
     private var blocks = 0
     static let frames = 256
 
-    init(rate: Double = 48_000, channels: Int = 2) throws {
+    /// `initialised: false` leaves the unit as a host first gets it, before it sets a format.
+    init(rate: Double = 48_000, channels: Int = 2, initialised: Bool = true) throws {
         var made: AudioUnit?
         try #require(AudioComponentInstanceNew(PlugIn.component, &made) == noErr)
         unit = try #require(made)
         self.rate = rate
         self.channels = channels
-        try initialise(rate: rate, channels: channels)
+        if initialised { try initialise(rate: rate, channels: channels) }
     }
 
     isolated deinit {
@@ -141,6 +142,42 @@ final class Instrument {
         try #require(AudioUnitGetProperty(unit, id, kAudioUnitScope_Global, 0, &value, &size) == noErr)
         return value
     }
+
+    /// The pad the window shows (0...15), as the unit keeps it for the window.
+    func selectedPad() throws -> Int {
+        var pad: UInt32 = 99
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        try #require(AudioUnitGetProperty(unit, AudioUnitPropertyID(kBrumleProperty_SelectedPad), kAudioUnitScope_Global, 0,
+                                          &pad, &size) == noErr)
+        return Int(pad)
+    }
+
+    @discardableResult
+    func setSelectedPad(_ pad: UInt32) -> OSStatus {
+        var value = pad
+        return AudioUnitSetProperty(unit, AudioUnitPropertyID(kBrumleProperty_SelectedPad), kAudioUnitScope_Global, 0,
+                                    &value, UInt32(MemoryLayout<UInt32>.size))
+    }
+
+    /// The presets in use, as the unit keeps them for the window: the keyboard's, then pad 1...16's;
+    /// "" for none.
+    func presetNames() throws -> [String] {
+        var names: Unmanaged<CFArray>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFArray>?>.size)
+        try #require(AudioUnitGetProperty(unit, AudioUnitPropertyID(kBrumleProperty_PresetNames), kAudioUnitScope_Global, 0,
+                                          &names, &size) == noErr)
+        let array = try #require(names).takeRetainedValue()                          // handed over retained
+        return try #require(array as? [String])
+    }
+
+    @discardableResult
+    func setPresetNames(_ names: CFArray) -> OSStatus {
+        var value = Unmanaged.passUnretained(names)
+        return withExtendedLifetime(names) {
+            AudioUnitSetProperty(unit, AudioUnitPropertyID(kBrumleProperty_PresetNames), kAudioUnitScope_Global, 0,
+                                 &value, UInt32(MemoryLayout<Unmanaged<CFArray>>.size))
+        }
+    }
 }
 
 private func peak(_ samples: [Float]) -> Float {
@@ -150,6 +187,15 @@ private func peak(_ samples: [Float]) -> Float {
 /// How many times a host's property listener was called. The unit calls it synchronously.
 final class Calls {
     var count = 0
+}
+
+/// The values a host's parameter listener was told of, in order. The listener runs on its own queue.
+private final class Told: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Float] = []
+
+    func add(_ value: Float) { lock.withLock { values.append(value) } }
+    var all: [Float] { lock.withLock { values } }
 }
 
 @Suite("The Audio Unit")
@@ -271,6 +317,70 @@ struct AudioUnitTests {
         #expect(try instrument.parameter(ring.index) == before)
         #expect(abs(brumle_get_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(ring.index)) - before) < 0.001)
         #expect(brumle_get_program(engine, Int32(BRUMLE_KEYBOARD_SET)) == 2)
+    }
+
+    // MARK: MIDI controllers
+
+    /// A host's listener for one parameter's value. It runs on a queue of its own, so it is made
+    /// outside the main actor.
+    private nonisolated static func listen(to parameter: Parameter, of unit: AudioUnit, told: Told) throws -> AUParameterListenerRef {
+        var listener: AUParameterListenerRef?
+        try #require(AUListenerCreateWithDispatchQueue(&listener, 0, DispatchQueue(label: "host")) { _, _, value in
+            told.add(value)
+        } == noErr)
+        let host = try #require(listener)
+        var address = AudioUnitParameter(mAudioUnit: unit, mParameterID: AudioUnitParameterID(parameter.index),
+                                         mScope: kAudioUnitScope_Global, mElement: 0)
+        try #require(AUListenerAddParameter(host, nil, &address) == noErr)
+        return host
+    }
+
+    @Test("A controller moves the engine's knob, and after the block the unit's parameter follows and the host is told")
+    func controllerMirrorsToHost() async throws {
+        let instrument = try Instrument()
+        let engine = try instrument.engine()
+        let vowel = try #require(Parameters.named("vowel"))
+        #expect(Synth(borrowing: engine).controller(of: vowel) == 74)
+        let told = Told()
+        let host = try Self.listen(to: vowel, of: instrument.unit, told: told)
+        defer { AUListenerDispose(host) }
+
+        try instrument.midi(0xB0, 74, 127)
+        _ = try instrument.render()
+        let top = brumle_get_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(vowel.index))
+        #expect(abs(top - vowel.range.upperBound) < 0.01)
+        #expect(try instrument.parameter(vowel.index) == top)               // what a host reads and saves
+        for _ in 0..<200 where told.all.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(told.all == [top])
+
+        try instrument.midi(0xB3, 74, 0)                                     // any channel
+        _ = try instrument.render()
+        let bottom = try instrument.parameter(vowel.index)
+        #expect(abs(bottom - vowel.range.lowerBound) < 0.01)
+        for _ in 0..<200 where told.all.count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(told.all == [top, bottom])
+
+        // The next block does not hand the old value back: the controller's stays.
+        _ = try instrument.render()
+        #expect(abs(brumle_get_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(vowel.index)) - vowel.range.lowerBound) < 0.01)
+    }
+
+    @Test("A knob the host has set stays there until its controller moves")
+    func hostAndControllerTakeTurns() throws {
+        let instrument = try Instrument()
+        let vowel = try #require(Parameters.named("vowel"))
+        try instrument.midi(0xB0, 74, 127)
+        _ = try instrument.render()
+        try instrument.setParameter("vowel", to: 1000)
+        _ = try instrument.render()
+        try instrument.midi(0xB0, 7, 64)                                     // another knob's controller
+        _ = try instrument.render()
+        #expect(try instrument.parameter(vowel.index) == 1000)
+        #expect(abs(Synth(borrowing: try instrument.engine()).value(of: vowel) - 1000) < 0.01)
+
+        try instrument.midi(0xB0, 74, 0)
+        _ = try instrument.render()
+        #expect(abs(try instrument.parameter(vowel.index) - vowel.range.lowerBound) < 0.01)
     }
 
     // MARK: Saved state
@@ -399,6 +509,164 @@ struct AudioUnitTests {
         #expect(synth.state == before)
     }
 
+    @Test("The saved state brings back the controllers, the selected pad and the presets in use, but not a learn")
+    func stateKeepsControllersAndSelection() throws {
+        let saved = try Instrument()
+        let synth = Synth(borrowing: try saved.engine())
+        let vowel = try #require(Parameters.named("vowel")), ring = try #require(Parameters.named("ring"))
+        let buzz = try #require(Parameters.named("buzz"))
+        synth.setController(40, of: vowel)
+        synth.setController(nil, of: ring)
+        #expect(saved.setSelectedPad(5) == noErr)
+        var names = [String](repeating: "", count: 17)
+        names[0] = "Warm"
+        names[2] = "Kick"
+        names[16] = "Last pad"
+        #expect(saved.setPresetNames(names as CFArray) == noErr)
+        synth.learn(buzz)                                                    // listening when the project is saved
+        let state = try saved.classInfo()
+
+        let dictionary = try #require(state as? [String: Any])
+        #expect(dictionary.keys.filter { $0.hasPrefix("brumle-") }.sorted() == ["brumle-controllers", "brumle-pads"])
+        let controllers = try #require(dictionary["brumle-controllers"] as? Data)
+        #expect(controllers.count == 34 * MemoryLayout<Int32>.size)
+        let pads = try #require(dictionary["brumle-pads"] as? [String: Any])
+        #expect(Set(pads.keys) == ["mode", "keyboardProgram", "selectedPad", "keyboardPreset", "pads"])      // nothing of the learn
+        #expect(pads["selectedPad"] as? Int == 5)
+        #expect(pads["keyboardPreset"] as? String == "Warm")
+        let list = try #require(pads["pads"] as? [[String: Any]])
+        #expect(list.map { $0["preset"] as? String } == names.dropFirst().map { Optional($0) })
+
+        let restored = try Instrument()
+        let other = Synth(borrowing: try restored.engine())
+        try restored.restore(state)
+        for parameter in Parameters.all {
+            #expect(other.controller(of: parameter) == synth.controller(of: parameter), "\(parameter.identifier)")
+        }
+        #expect(other.controller(of: vowel) == 40 && other.controller(of: ring) == nil)
+        #expect(other.learning == nil)
+        #expect(try restored.selectedPad() == 5)
+        #expect(try restored.presetNames() == names)
+    }
+
+    @Test("Saved controllers are checked one by one; a shorter list covers the first knobs")
+    func stateControllersAreChecked() throws {
+        let instrument = try Instrument()
+        let synth = Synth(borrowing: try instrument.engine())
+        var state = try #require(try instrument.classInfo() as? [String: Any])
+        let knobs = Parameters.all.prefix(34)
+        // Ring 40, Edge out of range, Offset the sustain pedal (reserved), Body below zero, Buzz none;
+        // the knobs after the sixth are not in the list.
+        let saved: [Int32] = [40, 300, 64, -7, -1, 41]
+        state["brumle-controllers"] = saved.withUnsafeBufferPointer { Data(buffer: $0) }
+        synth.setController(50, of: knobs[20])
+        try instrument.restore(state as CFDictionary)
+
+        #expect(synth.controller(of: knobs[0]) == 40)
+        for index in 1...4 { #expect(synth.controller(of: knobs[index]) == nil, "\(knobs[index].identifier)") }
+        #expect(synth.controller(of: knobs[5]) == 41)
+        #expect(synth.controller(of: knobs[20]) == 50)                        // after the list: left alone
+        for knob in knobs.dropFirst(6) where knob.index != 20 {
+            #expect(synth.controller(of: knob) == Controllers.standard(for: knob), "\(knob.identifier)")
+        }
+
+        // The wrong type, or a list too short for one value, leaves them all alone.
+        for wrong: Any in ["40", [40, 41], Data([1, 2, 3])] {
+            state["brumle-controllers"] = wrong
+            try instrument.restore(state as CFDictionary)
+            #expect(synth.controller(of: knobs[0]) == 40 && synth.controller(of: knobs[20]) == 50)
+        }
+    }
+
+    @Test("A project saved before controllers, pad selection and presets keeps the standard controllers and pad 01")
+    func olderStateKeepsDefaults() throws {
+        let saved = try Instrument()
+        Synth(borrowing: try saved.engine()).setController(40, of: try #require(Parameters.named("vowel")))
+        saved.setSelectedPad(9)
+        var names = [String](repeating: "Old", count: 17)
+        saved.setPresetNames(names as CFArray)
+        var older = try #require(try saved.classInfo() as? [String: Any])
+        older["brumle-controllers"] = nil
+        var pads = try #require(older["brumle-pads"] as? [String: Any])
+        pads["selectedPad"] = nil
+        pads["keyboardPreset"] = nil
+        pads["pads"] = try #require(pads["pads"] as? [[String: Any]]).map { pad in
+            var pad = pad
+            pad["preset"] = nil
+            return pad
+        }
+        older["brumle-pads"] = pads
+
+        let restored = try Instrument()
+        let synth = Synth(borrowing: try restored.engine())
+        try restored.restore(older as CFDictionary)
+        for parameter in Parameters.all {
+            #expect(synth.controller(of: parameter) == Controllers.standard(for: parameter), "\(parameter.identifier)")
+        }
+        #expect(try restored.selectedPad() == 0)
+        #expect(try restored.presetNames() == [String](repeating: "", count: 17))
+
+        // Restored over an instance that has its own: the controllers and the pad stay; the sets
+        // that came from the project lose the names of the presets they no longer hold.
+        try saved.restore(older as CFDictionary)
+        #expect(Synth(borrowing: try saved.engine()).controller(of: try #require(Parameters.named("vowel"))) == 40)
+        #expect(try saved.selectedPad() == 9)
+        names = [String](repeating: "", count: 17)
+        #expect(try saved.presetNames() == names)
+
+        // Names of the wrong type count as none; a pad the state has no entry for keeps its name.
+        saved.setPresetNames([String](repeating: "Old", count: 17) as CFArray)
+        var wrong = try #require(try saved.classInfo() as? [String: Any])
+        var wrongPads = try #require(wrong["brumle-pads"] as? [String: Any])
+        wrongPads["keyboardPreset"] = 7
+        var list = try #require(wrongPads["pads"] as? [[String: Any]])
+        list[0]["preset"] = ["Old"]
+        list.removeLast()
+        wrongPads["pads"] = list
+        wrongPads["selectedPad"] = 16
+        wrong["brumle-pads"] = wrongPads
+        try saved.restore(wrong as CFDictionary)
+        #expect(try saved.presetNames() == ["", ""] + [String](repeating: "Old", count: 15))
+        #expect(try saved.selectedPad() == 9)
+    }
+
+    @Test("The selected pad is a pad: anything else is refused")
+    func selectedPadIsAPad() throws {
+        let instrument = try Instrument()
+        #expect(try instrument.selectedPad() == 0)
+        var size: UInt32 = 0
+        var writable: DarwinBoolean = false
+        try #require(AudioUnitGetPropertyInfo(instrument.unit, AudioUnitPropertyID(kBrumleProperty_SelectedPad), kAudioUnitScope_Global, 0,
+                                              &size, &writable) == noErr)
+        #expect(size == UInt32(MemoryLayout<UInt32>.size) && writable.boolValue)
+        #expect(instrument.setSelectedPad(15) == noErr)
+        #expect(try instrument.selectedPad() == 15)
+        #expect(instrument.setSelectedPad(16) == kAudioUnitErr_InvalidPropertyValue)
+        var short: UInt16 = 3
+        #expect(AudioUnitSetProperty(instrument.unit, AudioUnitPropertyID(kBrumleProperty_SelectedPad), kAudioUnitScope_Global, 0,
+                                     &short, UInt32(MemoryLayout<UInt16>.size)) == kAudioUnitErr_InvalidPropertyValue)
+        #expect(try instrument.selectedPad() == 15)
+    }
+
+    @Test("The presets in use are seventeen names: anything else is refused, and the unit keeps a copy")
+    func presetNamesAreSeventeen() throws {
+        let instrument = try Instrument()
+        #expect(try instrument.presetNames() == [String](repeating: "", count: 17))
+        let names = NSMutableArray(array: [String](repeating: "", count: 17))
+        let first = NSMutableString(string: "Warm")
+        names[0] = first
+        #expect(instrument.setPresetNames(names) == noErr)
+        first.append(" and changed")                                         // the caller's string, not the unit's
+        #expect(try instrument.presetNames().first == "Warm")
+
+        #expect(instrument.setPresetNames([String](repeating: "", count: 16) as CFArray) == kAudioUnitErr_InvalidPropertyValue)
+        #expect(instrument.setPresetNames(([String](repeating: "", count: 16) as [Any] + [3]) as CFArray) == kAudioUnitErr_InvalidPropertyValue)
+        var notAnArray = Unmanaged.passUnretained("Warm" as CFString)
+        #expect(AudioUnitSetProperty(instrument.unit, AudioUnitPropertyID(kBrumleProperty_PresetNames), kAudioUnitScope_Global, 0,
+                                     &notAnArray, UInt32(MemoryLayout<Unmanaged<CFString>>.size)) == kAudioUnitErr_InvalidPropertyValue)
+        #expect(try instrument.presetNames().first == "Warm")
+    }
+
     @Test("Telling the unit its pads changed tells the host its saved state changed")
     func stateChangedTellsTheHost() throws {
         let instrument = try Instrument()
@@ -428,6 +696,28 @@ struct AudioUnitTests {
             try instrument.initialise(rate: rate, channels: 2)
             #expect(abs(try instrument.float64Property(kAudioUnitProperty_Latency) - latency) < 1e-12, "\(rate) Hz")
         }
+    }
+
+    @Test("A host hears when Initialize changes the latency, and the latency is right before the first Initialize")
+    func latencyAnnounced() throws {
+        let instrument = try Instrument(rate: 48_000, initialised: false)
+        #expect(abs(try instrument.float64Property(kAudioUnitProperty_Latency) - 29.0 / 44_100) < 1e-12)     // the engine starts at 44.1 kHz
+
+        let calls = Calls()
+        let listener: AudioUnitPropertyListenerProc = { refCon, _, id, scope, _ in
+            guard id == kAudioUnitProperty_Latency, scope == kAudioUnitScope_Global else { return }
+            Unmanaged<Calls>.fromOpaque(refCon).takeUnretainedValue().count += 1
+        }
+        let refCon = Unmanaged.passUnretained(calls).toOpaque()
+        try #require(AudioUnitAddPropertyListener(instrument.unit, kAudioUnitProperty_Latency, listener, refCon) == noErr)
+        defer { AudioUnitRemovePropertyListenerWithUserData(instrument.unit, kAudioUnitProperty_Latency, listener, refCon) }
+
+        for (step, (rate, heard)) in [(48_000.0, 1), (48_000, 1), (96_000, 2), (192_000, 2), (44_100, 3)].enumerated() {
+            if step > 0 { try #require(AudioUnitUninitialize(instrument.unit) == noErr) }
+            try instrument.initialise(rate: rate, channels: 2)
+            #expect(calls.count == heard, "\(rate) Hz")
+        }
+        #expect(abs(try instrument.float64Property(kAudioUnitProperty_Latency) - 29.0 / 44_100) < 1e-12)
     }
 
     @Test("The tail is as long as the longest Ring")

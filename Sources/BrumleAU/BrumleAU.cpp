@@ -5,7 +5,8 @@
 // the engine's "plain" values (s, Hz, ms, dB, %, an index), so automation and saved host projects
 // read naturally. The pads, their notes and groups and the mode are no parameters: the plug-in's
 // window sets them on the engine directly (kBrumleProperty_Engine), and they are saved with the
-// unit's state. Built on Apple's AudioUnitSDK.
+// unit's state, as are the MIDI controllers, the pad the window shows and the presets the sets came
+// from. Built on Apple's AudioUnitSDK.
 
 #include "BrumleAU.h"
 #include "BrumleDSP.h"
@@ -13,6 +14,7 @@
 #include <AudioUnitSDK/MusicDeviceBase.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <vector>
 
@@ -59,14 +61,31 @@ Float64 longestRing()
     return 0.0;
 }
 
+// The rate brumle_create() prepares the engine for, before a host sets one.
+constexpr Float64 kStartRate = 44100.0;
+
+// The knobs: the parameters that can have a MIDI controller, at the start of the table.
+int knobCount()
+{
+    int knobs = 0;
+    while (knobs < brumle_num_params() && brumle_standard_controller(knobs) >= 0) ++knobs;
+    return knobs;
+}
+
 // ----- the pads in the saved state ----------------------------------------------------------
 // The base class saves the unit's parameters (the keyboard set). The program the keyboard set
-// last loaded, the pads and the mode ride along under a key of their own:
-//   "brumle-pads": { "mode": int, "keyboardProgram": int,
+// last loaded, the pads, the mode, the pad the window shows and the presets in use ride along
+// under a key of their own:
+//   "brumle-pads": { "mode": int, "keyboardProgram": int, "selectedPad": int (0...15),
+//                    "keyboardPreset": string ("" for none),
 //                    "pads": [ 16 × { "note": int, "group": int (0 = Off), "program": int,
+//                                     "preset": string ("" for none),
 //                                     "values": data: Float32 plain values by parameter index } ] }
+// The MIDI controllers of the knobs under another:
+//   "brumle-controllers": data: SInt32 per knob in table order, -1 for none
 
 CFStringRef padsKey() { return CFSTR("brumle-pads"); }
+CFStringRef controllersKey() { return CFSTR("brumle-controllers"); }
 
 void setInt(CFMutableDictionaryRef dict, CFStringRef key, SInt32 value)
 {
@@ -86,10 +105,44 @@ bool getInt(CFDictionaryRef dict, CFStringRef key, int& out)
     return true;
 }
 
-CFDictionaryRef copyPad(BrumleEngine* engine, int pad)
+// "" (no preset), retained.
+CFStringRef copyNoName() { return static_cast<CFStringRef>(CFRetain(CFSTR(""))); }
+
+// A copy of the string under `key`; "" (none) if there is none.
+CFStringRef copyName(CFDictionaryRef dict, CFStringRef key)
+{
+    const void* value = CFDictionaryGetValue(dict, key);
+    if (!value || CFGetTypeID(value) != CFStringGetTypeID()) return copyNoName();
+    return CFStringCreateCopy(nullptr, static_cast<CFStringRef>(value));
+}
+
+// A copy of what the window gives as the presets in use: an array of one string per set, nothing
+// else. nullptr if it is not that.
+CFArrayRef copyNames(CFTypeRef value)
+{
+    if (!value || CFGetTypeID(value) != CFArrayGetTypeID()) return nullptr;
+    const auto array = static_cast<CFArrayRef>(value);
+    if (CFArrayGetCount(array) != BRUMLE_NUM_SETS) return nullptr;
+    for (CFIndex i = 0; i < BRUMLE_NUM_SETS; ++i)
+    {
+        const void* name = CFArrayGetValueAtIndex(array, i);
+        if (!name || CFGetTypeID(name) != CFStringGetTypeID()) return nullptr;
+    }
+    CFMutableArrayRef copy = CFArrayCreateMutable(nullptr, BRUMLE_NUM_SETS, &kCFTypeArrayCallBacks);
+    for (CFIndex i = 0; i < BRUMLE_NUM_SETS; ++i)
+    {
+        CFStringRef name = CFStringCreateCopy(nullptr, static_cast<CFStringRef>(CFArrayGetValueAtIndex(array, i)));
+        CFArrayAppendValue(copy, name);
+        CFRelease(name);
+    }
+    return copy;
+}
+
+CFDictionaryRef copyPad(BrumleEngine* engine, int pad, CFStringRef preset)
 {
     const int set = pad + 1;
     CFMutableDictionaryRef dict = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(dict, CFSTR("preset"), preset);
     setInt(dict, CFSTR("note"), brumle_pad_note(engine, pad));
     setInt(dict, CFSTR("group"), brumle_pad_group(engine, pad));
     setInt(dict, CFSTR("program"), brumle_get_program(engine, set));
@@ -142,20 +195,28 @@ class BrumleAU : public ausdk::MusicDeviceBase {
 
 public:
     explicit BrumleAU(AudioComponentInstance instance)
-        : Base{ instance, 0, 1 }, engine_(brumle_create()), tail_(longestRing())
+        : Base{ instance, 0, 1 }, engine_(brumle_create()), knobs_(knobCount()), tail_(longestRing())
     {
         CreateElements();
         const int count = brumle_num_params();
         Globals()->UseIndexedParameters(static_cast<UInt32>(count));
         applied_.resize(static_cast<size_t>(count));
+        heard_.resize(static_cast<size_t>(count));
         for (int i = 0; i < count; ++i)
         {
             BrumleParamInfo info{};
             brumle_param_info(i, &info);
             Globals()->SetParameter(static_cast<AudioUnitParameterID>(i), info.defaultValue);
             applied_[static_cast<size_t>(i)] = info.defaultValue;
+            heard_[static_cast<size_t>(i)] = brumle_get_plain(engine_, BRUMLE_KEYBOARD_SET, i);
         }
         SetAFactoryPresetAsCurrent(factoryPresets().front());
+        // A host may ask for the latency before it initialises the unit.
+        latency_ = brumle_latency(engine_) / kStartRate;
+
+        CFMutableArrayRef names = CFArrayCreateMutable(nullptr, BRUMLE_NUM_SETS, &kCFTypeArrayCallBacks);
+        for (int set = 0; set < BRUMLE_NUM_SETS; ++set) CFArrayAppendValue(names, CFSTR(""));
+        presetNames_ = ausdk::Owned<CFArrayRef>::from_create(names);
     }
 
     ~BrumleAU() override { brumle_destroy(engine_); }
@@ -176,7 +237,12 @@ public:
         const AudioStreamBasicDescription& format = Output(0).GetStreamFormat();
         if (format.mChannelsPerFrame < 1 || format.mChannelsPerFrame > 2) return kAudioUnitErr_FormatNotSupported;
         brumle_prepare(engine_, format.mSampleRate);
-        latency_ = format.mSampleRate > 0 ? brumle_latency(engine_) / format.mSampleRate : 0.0;
+        const Float64 latency = format.mSampleRate > 0 ? brumle_latency(engine_) / format.mSampleRate : 0.0;
+        if (latency != latency_)
+        {
+            latency_ = latency;
+            PropertyChanged(kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0);
+        }
         // A mono output gets both sides mixed: the engine renders stereo into these first. Made
         // here, never while rendering; the host cannot raise the frames per slice until the
         // unit is uninitialised.
@@ -220,7 +286,12 @@ public:
                     outWritable = false;
                     return noErr;
                 case kBrumleProperty_StateChanged:
+                case kBrumleProperty_SelectedPad:
                     outDataSize = sizeof(UInt32);
+                    outWritable = true;
+                    return noErr;
+                case kBrumleProperty_PresetNames:
+                    outDataSize = sizeof(CFArrayRef);
                     outWritable = true;
                     return noErr;
                 default:
@@ -250,6 +321,12 @@ public:
                     return noErr;
                 case kBrumleProperty_StateChanged:
                     return kAudioUnitErr_InvalidPropertyValue;     // written, never read
+                case kBrumleProperty_SelectedPad:
+                    *static_cast<UInt32*>(outData) = selectedPad_.load(std::memory_order_relaxed);
+                    return noErr;
+                case kBrumleProperty_PresetNames:
+                    *static_cast<CFArrayRef*>(outData) = static_cast<CFArrayRef>(CFRetain(*presetNames_));   // the caller releases it
+                    return noErr;
                 default:
                     break;
             }
@@ -269,6 +346,22 @@ public:
                 PropertyChanged(kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0);
                 return noErr;
             }
+            if (id == kBrumleProperty_SelectedPad)
+            {
+                if (inDataSize != sizeof(UInt32)) return kAudioUnitErr_InvalidPropertyValue;
+                const UInt32 pad = *static_cast<const UInt32*>(inData);
+                if (pad >= BRUMLE_NUM_PADS) return kAudioUnitErr_InvalidPropertyValue;
+                selectedPad_.store(pad, std::memory_order_relaxed);
+                return noErr;
+            }
+            if (id == kBrumleProperty_PresetNames)
+            {
+                if (inDataSize != sizeof(CFArrayRef)) return kAudioUnitErr_InvalidPropertyValue;
+                CFArrayRef names = copyNames(*static_cast<const CFTypeRef*>(inData));
+                if (!names) return kAudioUnitErr_InvalidPropertyValue;
+                presetNames_ = ausdk::Owned<CFArrayRef>::from_create(names);
+                return noErr;
+            }
         }
         return Base::SetProperty(id, scope, element, inData, inDataSize);
     }
@@ -278,49 +371,59 @@ public:
     {
         const OSStatus status = Base::SaveState(outData);
         if (status != noErr || !outData || !*outData || CFGetTypeID(*outData) != CFDictionaryGetTypeID()) return status;
+        // The base class made this dictionary a moment ago and nobody else holds it yet.
+        const auto state = static_cast<CFMutableDictionaryRef>(const_cast<void*>(*outData));
+        const auto name = [this](int set) { return static_cast<CFStringRef>(CFArrayGetValueAtIndex(*presetNames_, set)); };
+
         CFMutableDictionaryRef pads = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         setInt(pads, CFSTR("mode"), brumle_get_mode(engine_));
         setInt(pads, CFSTR("keyboardProgram"), brumle_get_program(engine_, BRUMLE_KEYBOARD_SET));
+        setInt(pads, CFSTR("selectedPad"), static_cast<SInt32>(selectedPad_.load(std::memory_order_relaxed)));
+        CFDictionarySetValue(pads, CFSTR("keyboardPreset"), name(BRUMLE_KEYBOARD_SET));
         CFMutableArrayRef list = CFArrayCreateMutable(nullptr, BRUMLE_NUM_PADS, &kCFTypeArrayCallBacks);
         for (int pad = 0; pad < BRUMLE_NUM_PADS; ++pad)
         {
-            CFDictionaryRef saved = copyPad(engine_, pad);
+            CFDictionaryRef saved = copyPad(engine_, pad, name(pad + 1));
             CFArrayAppendValue(list, saved);
             CFRelease(saved);
         }
         CFDictionarySetValue(pads, CFSTR("pads"), list);
         CFRelease(list);
-        // The base class made this dictionary a moment ago and nobody else holds it yet.
-        CFDictionarySetValue(static_cast<CFMutableDictionaryRef>(const_cast<void*>(*outData)), padsKey(), pads);
+        CFDictionarySetValue(state, padsKey(), pads);
         CFRelease(pads);
+
+        // The controllers only: a learn in progress is not saved.
+        std::vector<SInt32> controllers(static_cast<size_t>(knobs_));
+        for (int i = 0; i < knobs_; ++i) controllers[static_cast<size_t>(i)] = brumle_get_controller(engine_, i);
+        CFDataRef data = CFDataCreate(nullptr, reinterpret_cast<const UInt8*>(controllers.data()),
+                                      static_cast<CFIndex>(controllers.size() * sizeof(SInt32)));
+        CFDictionarySetValue(state, controllersKey(), data);
+        CFRelease(data);
         return noErr;
     }
 
     // State without the pads leaves them alone (the default kit); a shorter list of pads leaves
-    // the rest alone. Whatever is missing or of the wrong type is left as it is. The keyboard
-    // set's values came with the base class's parameters: of its program only the number is put
-    // back, so that a reset to the program's value finds the right program.
+    // the rest alone. Whatever is missing or of the wrong type is left as it is, but for the
+    // presets in use: a set the state brings back holds the state's values, so it keeps the name
+    // the state gives it, or none. The keyboard set's values came with the base class's
+    // parameters: of its program only the number is put back, so that a reset to the program's
+    // value finds the right program. State without controllers leaves them alone.
     OSStatus RestoreState(CFPropertyListRef plist) override
     {
         const OSStatus status = Base::RestoreState(plist);
         if (status != noErr || !plist || CFGetTypeID(plist) != CFDictionaryGetTypeID()) return status;
-        const void* stored = CFDictionaryGetValue(static_cast<CFDictionaryRef>(plist), padsKey());
-        if (!stored || CFGetTypeID(stored) != CFDictionaryGetTypeID()) return status;
-        const auto pads = static_cast<CFDictionaryRef>(stored);
+        const auto state = static_cast<CFDictionaryRef>(plist);
+        restoreControllers(state);
 
-        int mode = 0;
-        if (getInt(pads, CFSTR("mode"), mode)) brumle_set_mode(engine_, mode);
-        int program = 0;
-        if (getInt(pads, CFSTR("keyboardProgram"), program)) brumle_set_program_index(engine_, BRUMLE_KEYBOARD_SET, program);
-        const void* list = CFDictionaryGetValue(pads, CFSTR("pads"));
-        if (!list || CFGetTypeID(list) != CFArrayGetTypeID()) return status;
-        const auto array = static_cast<CFArrayRef>(list);
-        const int count = std::min(static_cast<int>(CFArrayGetCount(array)), static_cast<int>(BRUMLE_NUM_PADS));
-        for (int pad = 0; pad < count; ++pad)
-        {
-            const void* saved = CFArrayGetValueAtIndex(array, pad);
-            if (saved && CFGetTypeID(saved) == CFDictionaryGetTypeID()) restorePad(engine_, pad, static_cast<CFDictionaryRef>(saved));
-        }
+        CFMutableArrayRef names = CFArrayCreateMutableCopy(nullptr, BRUMLE_NUM_SETS, *presetNames_);
+        const void* stored = CFDictionaryGetValue(state, padsKey());
+        const auto pads = stored && CFGetTypeID(stored) == CFDictionaryGetTypeID() ? static_cast<CFDictionaryRef>(stored) : nullptr;
+        CFStringRef keyboardName = pads ? copyName(pads, CFSTR("keyboardPreset")) : copyNoName();
+        CFArraySetValueAtIndex(names, BRUMLE_KEYBOARD_SET, keyboardName);
+        CFRelease(keyboardName);
+        if (pads) restorePads(pads, names);
+        presetNames_ = ausdk::Owned<CFArrayRef>::from_create(CFArrayCreateCopy(nullptr, names));
+        CFRelease(names);
         return status;
     }
 
@@ -419,9 +522,39 @@ public:
             {
                 applied_[static_cast<size_t>(i)] = value;
                 brumle_set_plain(engine_, BRUMLE_KEYBOARD_SET, i, value);
+                heard_[static_cast<size_t>(i)] = brumle_get_plain(engine_, BRUMLE_KEYBOARD_SET, i);
             }
         }
 
+        const OSStatus status = process(frames);
+
+        // A controller moved a knob inside the engine: the unit's own parameters follow, since
+        // they are what a host and the window read and what is saved, and the host is told, as
+        // it is of a change it makes itself with AUParameterSet. A knob the engine holds as the
+        // host left it is not touched: the engine keeps knobs as 0...1 positions, so its plain
+        // value can be a few ulps off the host's, and the host's stays.
+        const unsigned changes = brumle_changes(engine_);
+        if (changes != seenChanges_)
+        {
+            seenChanges_ = changes;
+            for (int i = 0; i < count; ++i)
+            {
+                const float value = brumle_get_plain(engine_, BRUMLE_KEYBOARD_SET, i);
+                if (value == heard_[static_cast<size_t>(i)]) continue;
+                heard_[static_cast<size_t>(i)] = value;
+                applied_[static_cast<size_t>(i)] = value;           // or the next block would hand the host's value back
+                Globals()->SetParameterRT(static_cast<AudioUnitParameterID>(i), value, true);
+                const AudioUnitParameter parameter{ GetComponentInstance(), static_cast<AudioUnitParameterID>(i), kAudioUnitScope_Global, 0 };
+                AUParameterListenerNotify(nullptr, nullptr, &parameter);
+            }
+        }
+        return status;
+    }
+
+private:
+    // The block, into the output's buffers.
+    OSStatus process(UInt32 frames) AUSDK_RTSAFE
+    {
         AudioBufferList& buffers = Output(0).GetBufferList();
         float* left = static_cast<float*>(buffers.mBuffers[0].mData);
         if (buffers.mNumberBuffers > 1)
@@ -443,12 +576,59 @@ public:
         return noErr;
     }
 
-private:
+    // First the knobs that are to have none, then the others: giving a controller takes it from
+    // whoever has it. A list from a version with fewer knobs covers the first of them; a value
+    // that is no controller a knob can have means none.
+    void restoreControllers(CFDictionaryRef state)
+    {
+        const void* stored = CFDictionaryGetValue(state, controllersKey());
+        if (!stored || CFGetTypeID(stored) != CFDataGetTypeID()) return;
+        const auto data = static_cast<CFDataRef>(stored);
+        const int count = std::min(knobs_, static_cast<int>(CFDataGetLength(data) / static_cast<CFIndex>(sizeof(SInt32))));
+        if (count <= 0) return;
+        std::vector<SInt32> controllers(static_cast<size_t>(count));
+        std::memcpy(controllers.data(), CFDataGetBytePtr(data), controllers.size() * sizeof(SInt32));   // CFData need not be aligned
+        for (SInt32& cc : controllers)
+            if (cc < 0 || cc > 127 || brumle_controller_reserved(cc)) cc = -1;
+        for (int i = 0; i < count; ++i) if (controllers[static_cast<size_t>(i)] < 0) brumle_set_controller(engine_, i, -1);
+        for (int i = 0; i < count; ++i) if (controllers[static_cast<size_t>(i)] >= 0) brumle_set_controller(engine_, i, controllers[static_cast<size_t>(i)]);
+    }
+
+    // The pads, the mode and the window's pad from "brumle-pads"; each pad the state has brings
+    // its preset's name into `names`.
+    void restorePads(CFDictionaryRef pads, CFMutableArrayRef names)
+    {
+        int number = 0;
+        if (getInt(pads, CFSTR("mode"), number)) brumle_set_mode(engine_, number);
+        if (getInt(pads, CFSTR("keyboardProgram"), number)) brumle_set_program_index(engine_, BRUMLE_KEYBOARD_SET, number);
+        if (getInt(pads, CFSTR("selectedPad"), number) && number >= 0 && number < BRUMLE_NUM_PADS)
+            selectedPad_.store(static_cast<UInt32>(number), std::memory_order_relaxed);
+        const void* list = CFDictionaryGetValue(pads, CFSTR("pads"));
+        if (!list || CFGetTypeID(list) != CFArrayGetTypeID()) return;
+        const auto array = static_cast<CFArrayRef>(list);
+        const int count = std::min(static_cast<int>(CFArrayGetCount(array)), static_cast<int>(BRUMLE_NUM_PADS));
+        for (int pad = 0; pad < count; ++pad)
+        {
+            const void* saved = CFArrayGetValueAtIndex(array, pad);
+            if (!saved || CFGetTypeID(saved) != CFDictionaryGetTypeID()) continue;
+            const auto dict = static_cast<CFDictionaryRef>(saved);
+            restorePad(engine_, pad, dict);
+            CFStringRef name = copyName(dict, CFSTR("preset"));
+            CFArraySetValueAtIndex(names, pad + 1, name);
+            CFRelease(name);
+        }
+    }
+
     BrumleEngine* engine_;
+    const int knobs_;                     // the parameters that can have a controller
     std::vector<float> applied_;          // the plain value last handed to the engine, per parameter
+    std::vector<float> heard_;            // the engine's plain value as the unit's parameter last matched it
+    unsigned seenChanges_ = 0;            // the engine's count of what MIDI changed, as of the last block
+    std::atomic<UInt32> selectedPad_{ 0 }; // the pad the window shows
+    ausdk::Owned<CFArrayRef> presetNames_; // the preset each set came from, "" for none; main thread only
     std::vector<float> scratchLeft_;      // stereo for a mono output, made in Initialize
     std::vector<float> scratchRight_;
-    Float64 latency_ = 0.0;               // seconds, as of the last Initialize
+    Float64 latency_ = 0.0;               // seconds, as of the last Initialize (before it: at kStartRate)
     const Float64 tail_;                  // seconds
 };
 
