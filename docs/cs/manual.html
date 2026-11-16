@@ -50,7 +50,10 @@
         <li><a href="#keyboard">Režim klaviatury</a></li>
         <li><a href="#pads">Režim padů</a></li>
         <li><a href="#send">Send to pad</a></li>
+        <li><a href="#presets">Presety</a></li>
+        <li><a href="#kits">Sady</a></li>
         <li><a href="#amounts">Míry LFO a VEL</a></li>
+        <li><a href="#midi">MIDI ovladače</a></li>
         <li><a href="#settings">Nastavení</a></li>
         <li><a href="#plugin">Plugin Audio Unit</a></li>
         <li><a href="#updates">Aktualizace</a></li>
@@ -68,7 +71,7 @@
           <li>Zvuk jde do výstupu nastaveného v macOS. Jiné zařízení, nebo jedno MIDI zařízení či kanál, vyberete po kliknutí na ozubené kolečko vpravo v hlavičce (<span class="ui">Settings</span>; viz <a href="#settings">Nastavení</a>).</li>
           <li>Chcete-li Brumle hrát v hostitelském programu, jako je Logic Pro nebo Ableton Live, otevřete <span class="ui">Settings</span> a klikněte na <span class="ui">Install Audio Unit</span> (viz <a href="#plugin">Plugin Audio Unit</a>).</li>
         </ol>
-        <p>Aplikace si zvuk pamatuje mezi spuštěními: knoby klaviatury, všech šestnáct padů, režim i vybraný pad.</p>
+        <p>Aplikace si zvuk pamatuje mezi spuštěními: knoby klaviatury, všech šestnáct padů, režim, vybraný pad i preset, ze kterého každý zvuk pochází. Pamatuje si také vaše MIDI ovladače (viz <a href="#midi">MIDI ovladače</a>).</p>
       </section>
 
       <section id="window">
@@ -77,32 +80,38 @@
           <div class="view" style="--iw:2200;--ih:1410">
             <img src="../assets/brumle-window.png" alt="Okno aplikace Brumle v režimu klaviatury s vyznačenými oblastmi">
             <div class="mark" style="--x:18.9;--y:1.8;--w:13.6;--h:6.2"><b>1</b></div>
-            <div class="mark" style="--x:60.2;--y:3.0;--w:11.2;--h:3.8"><b>2</b></div>
-            <div class="mark" style="--x:74.0;--y:2.8;--w:20.6;--h:4.1"><b>3</b></div>
-            <div class="mark" style="--x:95.4;--y:2.8;--w:3.9;--h:4.1"><b>4</b></div>
-            <div class="mark" style="--x:0.9;--y:12.8;--w:98.2;--h:52.8"><b>5</b></div>
-            <div class="mark" style="--x:81.2;--y:70.6;--w:6.2;--h:6.4"><b>6</b></div>
-            <div class="mark" style="--x:88.3;--y:71.6;--w:9.6;--h:4.4"><b>7</b></div>
-            <div class="mark" style="--x:1.6;--y:80.4;--w:96.8;--h:17.3"><b>8</b></div>
+            <div class="mark" style="--x:33.5;--y:1.8;--w:13.6;--h:6.2"><b>2</b></div>
+            <div class="mark" style="--x:53.6;--y:3.0;--w:11.1;--h:3.8"><b>3</b></div>
+            <div class="mark" style="--x:67.3;--y:2.8;--w:20.5;--h:4.1"><b>4</b></div>
+            <div class="mark" style="--x:88.3;--y:2.8;--w:6.2;--h:4.1"><b>5</b></div>
+            <div class="mark" style="--x:95.4;--y:2.8;--w:3.9;--h:4.1"><b>6</b></div>
+            <div class="mark" style="--x:0.9;--y:12.8;--w:98.2;--h:52.8"><b>7</b></div>
+            <div class="mark" style="--x:81.1;--y:70.6;--w:5.9;--h:6.4"><b>8</b></div>
+            <div class="mark" style="--x:87.8;--y:71.6;--w:10.2;--h:4.4"><b>9</b></div>
+            <div class="mark" style="--x:1.6;--y:80.4;--w:96.8;--h:17.3"><b>10</b></div>
           </div>
-          <figcaption>Okno v režimu klaviatury poté, co zazněla klávesa C3.</figcaption>
+          <figcaption>Okno v režimu klaviatury s presetem Night drone poté, co zazněla klávesa C3.</figcaption>
         </figure>
         <dl class="controls">
           <dt><span class="n">1</span>Program</dt>
           <dd>Načte do knobů jeden ze sedmi vestavěných zvuků (viz <a href="#header">Hlavička</a>).</dd>
-          <dt><span class="n">2</span>Keyboard | Pads</dt>
+          <dt><span class="n">2</span>Preset</dt>
+          <dd>Vaše vlastní zvuky uložené jako soubory: jeden načtete do knobů, knoby uložíte jako nový, nebo jeden smažete (viz <a href="#presets">Presety</a>).</dd>
+          <dt><span class="n">3</span>Keyboard | Pads</dt>
           <dd>Režim: klávesy hrají jeden zvuk ve své výšce, nebo noty 36–51 rozeznívají šestnáct padů, z nichž každý má vlastní zvuk (viz <a href="#keyboard">Režim klaviatury</a> a <a href="#pads">Režim padů</a>).</dd>
-          <dt><span class="n">3</span>LFO 1, LFO 2, VEL</dt>
+          <dt><span class="n">4</span>LFO 1, LFO 2, VEL</dt>
           <dd>Promění knoby v míry, o které jimi hýbe LFO nebo síla úderu (viz <a href="#amounts">Míry LFO a VEL</a>).</dd>
-          <dt><span class="n">4</span>Settings</dt>
+          <dt><span class="n">5</span>MIDI</dt>
+          <dd>Ukáže, který MIDI ovladač hýbe kterým knobem a přepínačem, a nechá je naučit se nové (viz <a href="#midi">MIDI ovladače</a>).</dd>
+          <dt><span class="n">6</span>Settings</dt>
           <dd>MIDI vstup, zvukový výstup a instalace pluginu Audio Unit. Má je jen aplikace.</dd>
-          <dt><span class="n">5</span>Reed, Stroke, Mouth, Breath, Master</dt>
+          <dt><span class="n">7</span>Reed, Stroke, Mouth, Breath, Master</dt>
           <dd>Knoby a přepínače zvuku v pěti skupinách (viz <a href="#knobs">Knoby a přepínače</a>). V režimu klaviatury ukazují zvuk klaviatury, v režimu padů zvuk vybraného padu.</dd>
-          <dt><span class="n">6</span>Last note</dt>
+          <dt><span class="n">8</span>Last note</dt>
           <dd>Poslední nota zahraná v režimu klaviatury; než nějaká zazní, je to C2. Tuto výšku dá padu tlačítko <span class="ui">Send to pad</span>.</dd>
-          <dt><span class="n">7</span>Send to pad</dt>
+          <dt><span class="n">9</span>Send to pad</dt>
           <dd>Zkopíruje zvuk klaviatury do jednoho z padů (viz <a href="#send">Send to pad</a>).</dd>
-          <dt><span class="n">8</span>Klaviatura</dt>
+          <dt><span class="n">10</span>Klaviatura</dt>
           <dd>Tři oktávy, C2 až B4 (H4). Kliknutím na klávesu ji zahrajete: u horního okraje klávesy má úder sílu (velocity) 40, u spodního 127. Přetažením myši na jinou klávesu se ta nezahraje. V režimu padů jsou na tomto místě pady.</dd>
         </dl>
       </section>
@@ -122,13 +131,18 @@
               <li><b>Genggong</b>: indonéský genggong, krátký a zvonivý, ústa dokořán.</li>
             </ul>
           </dd>
+          <dt>Preset</dt>
+          <dd>Vaše presety, zvuky, které jste si uložili. Stejně jako Program působí na zvuk, který právě ukazují knoby. V názvu nabídky je preset, ze kterého tento zvuk pochází, nebo „—“ (viz <a href="#presets">Presety</a>).</dd>
           <dt>Keyboard | Pads</dt>
           <dd>Přepíná mezi oběma režimy. Není to nastavení zvuku: přepnutím se žádný zvuk nezmění.</dd>
           <dt>LFO 1, LFO 2, VEL</dt>
-          <dd>Zapnuté může být vždy jen jedno z nich. Dokud je zapnuté, nastavují knoby míry tohoto zdroje; dalším kliknutím se vrátíte ke knobům (viz <a href="#amounts">Míry LFO a VEL</a>).</dd>
+          <dd>Z těchto tří tlačítek a tlačítka MIDI může být zapnuté vždy jen jedno. Dokud je zapnuté jedno z těchto tří, nastavují knoby míry tohoto zdroje; dalším kliknutím se vrátíte ke knobům (viz <a href="#amounts">Míry LFO a VEL</a>).</dd>
+          <dt>MIDI</dt>
+          <dd>Dokud je zapnuté, ukazuje každý knob a přepínač zvuku klaviatury místo své hodnoty svůj MIDI ovladač a po kliknutí se naučí nový; dalším kliknutím na MIDI se hodnoty vrátí (viz <a href="#midi">MIDI ovladače</a>). Nabídka tlačítka po kliknutí pravým tlačítkem vrátí všem prvkům jejich standardní ovladač.</dd>
           <dt>Settings (ozubené kolečko)</dt>
           <dd>Otevře <a href="#settings">nastavení</a>. Okno pluginu kolečko nemá: MIDI i zvuk tam obstarává hostitelský program.</dd>
         </dl>
+        <p>Když preset nebo sadu nejde uložit, načíst ani smazat, například protože jeho soubor někdo smazal ve Finderu nebo je poškozený, objeví se pod nabídkami Program a Preset na čtyři sekundy jednořádková zpráva. Nic jiného se nezmění.</p>
       </section>
 
       <section id="knobs">
@@ -141,7 +155,7 @@
           </div>
           <figcaption>Reed a Stroke: <span class="n">1</span> knob, <span class="n">2</span> přepínač.</figcaption>
         </figure>
-        <p>Knob <span class="n">1</span> má nad sebou název a pod sebou hodnotu; tyrkysový oblouk ukazuje, kde stojí. Táhněte knob nahoru nebo dolů: 200 bodů tažení ho otočí z jednoho konce na druhý. S klávesou <kbd>Shift</kbd> jsou kroky desetkrát jemnější. Dvojklik vrátí knob na hodnotu naposledy načteného programu. Přepínač <span class="n">2</span> ukazuje své volby vedle sebe; klikněte na jednu z nich. Tvary LFO mají voleb víc, proto jsou to nabídky.</p>
+        <p>Knob <span class="n">1</span> má nad sebou název a pod sebou hodnotu; tyrkysový oblouk ukazuje, kde stojí. Táhněte knob nahoru nebo dolů: 200 bodů tažení ho otočí z jednoho konce na druhý. S klávesou <kbd>Shift</kbd> jsou kroky desetkrát jemnější. Dvojklik vrátí knob na hodnotu z presetu, ze kterého zvuk pochází, a bez presetu na hodnotu naposledy načteného programu. Přepínač <span class="n">2</span> ukazuje své volby vedle sebe; klikněte na jednu z nich. Tvary LFO mají voleb víc, proto jsou to nabídky.</p>
         <p>Rozsahy a výchozí hodnoty níže jsou hodnoty programu Brumle.</p>
 
         <h3 id="reed">Reed</h3>
@@ -252,6 +266,7 @@
           <dd>Přidá dech: až polovinu dráhy knobu <span class="ui">Breath</span>.</dd>
         </dl>
         <p>Kolečka působí jen na zvuk klaviatury; znějící pady je nesledují. Reset All Controllers (CC 121) vrátí všechna tři do klidu a All Notes Off (CC 123) zastaví každý hlas za jeho čas <span class="ui">Damp</span>.</p>
+        <p>Ostatní MIDI ovladače otáčejí přímo knoby a přepínači (viz <a href="#midi">MIDI ovladače</a>).</p>
       </section>
 
       <section id="pads">
@@ -262,31 +277,32 @@
             <div class="mark" style="--x:0.9;--y:67.0;--w:61.8;--h:31.6"><b>1</b></div>
             <div class="mark" style="--x:0.9;--y:75.2;--w:15.0;--h:7.4"><b>2</b></div>
             <div class="mark" style="--x:63.6;--y:67.0;--w:35.5;--h:31.6"><b>3</b></div>
-            <div class="mark" style="--x:18.9;--y:1.8;--w:13.6;--h:6.2"><b>4</b></div>
-            <div class="mark" style="--x:60.2;--y:3.0;--w:11.2;--h:3.8"><b>5</b></div>
+            <div class="mark" style="--x:18.9;--y:1.8;--w:28.2;--h:6.2"><b>4</b></div>
+            <div class="mark" style="--x:53.6;--y:3.0;--w:11.1;--h:3.8"><b>5</b></div>
           </div>
           <figcaption>Režim padů s výchozí sadou a vybraným padem 05: knoby ukazují Morsing, vlastní zvuk padu.</figcaption>
         </figure>
         <p>V režimu padů <span class="n">5</span> rozeznívají MIDI noty 36–51 (C2–D♯3) pady 1–16: nota 36 je pad 1, nota 37 pad 2 a tak dál, jako na MPC nebo v Drum Racku Abletonu. Ostatní noty se ignorují. Každý pad má vlastní zvuk, zmrazený s ním, a hraje ho ve vlastní výšce, ať ho rozezní kterákoli nota.</p>
         <dl class="controls">
           <dt><span class="n">1</span>Pady</dt>
-          <dd>Pad 1 je vlevo nahoře a pady pokračují po řádcích. Každý ukazuje číslo a název, pod nimi výšku a skupinu umlčení („C2 G1“; „Off“, když žádnou nemá). Název padu je název programu, který do něj byl načten naposledy. Pad se při úderu rozsvítí, ať přijde z obrazovky, nebo z MIDI.</dd>
+          <dd>Pad 1 je vlevo nahoře a pady pokračují po řádcích. Každý ukazuje číslo a název, pod nimi výšku a skupinu umlčení („C2 G1“; „Off“, když žádnou nemá). Název padu je název presetu, ze kterého jeho zvuk pochází, a bez presetu název jeho programu. Pad se při úderu rozsvítí, ať přijde z obrazovky, nebo z MIDI.</dd>
           <dt><span class="n">2</span>Výběr a hraní padu</dt>
           <dd>Kliknutím pad zahrajete a vyberete; vybraný pad má tyrkysový obrys. Stejně jako u kláves je úder u horního okraje slabý a níž silnější. Pad zůstane držený, dokud nepustíte tlačítko myši, což má význam při Key Up = Damp.</dd>
           <dt>Úpravy padu</dt>
-          <dd>Knoby ukazují zvuk vybraného padu a otáčení jimi mění jen tento pad. <span class="n">4</span> <span class="ui">Program</span> se načte do vybraného padu. Zvuk klaviatury i ostatní pady zůstanou, jak byly.</dd>
+          <dd>Knoby ukazují zvuk vybraného padu a otáčení jimi mění jen tento pad. <span class="n">4</span> <span class="ui">Program</span> i <span class="ui">Preset</span> se načtou do vybraného padu. Zvuk klaviatury i ostatní pady zůstanou, jak byly.</dd>
           <dt><span class="n">3</span>Výška a skupina</dt>
-          <dd>Vedle padů: který pad je vybraný, jeho výška a skupina umlčení (viz níže).</dd>
+          <dd>Vedle padů: který pad je vybraný, jeho výška a skupina umlčení (viz níže) a nabídka Kit (viz <a href="#kits">Sady</a>).</dd>
         </dl>
         <p>Úder na pad použije zvuk padu tak, jak byl v okamžiku úderu: otočení knobem změní až další úder, ne ten, který zní. Pady znějí přes sebe, pokud je nezastaví jejich skupina.</p>
 
         <h3>Výška a skupina</h3>
         <figure class="fig">
           <div class="view" style="--iw:812;--ih:476">
-            <img src="../assets/manual/pad-inspector.png" alt="Inspektor padu: vybraný pad, jeho výška a skupina">
+            <img src="../assets/manual/pad-inspector.png" alt="Inspektor padu: vybraný pad, jeho výška, skupina a nabídka Kit">
             <div class="mark" style="--x:37.6;--y:70.4;--w:42.5;--h:9.5"><b>1</b></div>
-            <div class="mark" style="--x:19.1;--y:81.9;--w:29.6;--h:10.9"><b>2</b></div>
-            <div class="mark" style="--x:52.3;--y:81.9;--w:28.3;--h:10.9"><b>3</b></div>
+            <div class="mark" style="--x:11.7;--y:81.9;--w:26.7;--h:10.9"><b>2</b></div>
+            <div class="mark" style="--x:41.6;--y:81.9;--w:26.1;--h:10.9"><b>3</b></div>
+            <div class="mark" style="--x:70.9;--y:81.9;--w:17.0;--h:10.9"><b>4</b></div>
           </div>
         </figure>
         <dl class="controls">
@@ -295,15 +311,17 @@
           <dt><span class="n">2</span>Pitch</dt>
           <dd>Nota, kterou pad hraje, od C-1 do G9, vybíraná v podnabídkách po oktávách. <span class="ui">Octave</span> a <span class="ui">Tune</span> padu platí i nadále.</dd>
           <dt><span class="n">3</span>Group</dt>
-          <dd>Skupina umlčení padu: <b>Off</b> nebo 1–16. Výška a skupina patří padu, ne jeho zvuku: načtení programu je nezmění.</dd>
+          <dd>Skupina umlčení padu: <b>Off</b> nebo 1–16. Výška a skupina patří padu, ne jeho zvuku: načtení programu ani presetu je nezmění.</dd>
+          <dt><span class="n">4</span>Kit</dt>
+          <dd>Načítá, ukládá a maže sady: všech šestnáct padů najednou (viz <a href="#kits">Sady</a>).</dd>
         </dl>
 
         <h3>Skupiny umlčení</h3>
         <p>Skupiny umlčení fungují jako na MPC. Úder zastaví znějící jazýčky všech padů ze své skupiny bez ohledu na jejich výšku a vždy i předchozí úder vlastního padu. Pad se skupinou <b>Off</b> zastaví jen sám sebe, takže dva takové pady ve stejné výšce znějí přes sebe. Každý zastavený jazýček utichne za svůj vlastní čas <span class="ui">Damp</span>.</p>
         <p>Při <span class="ui">Stroke</span> = Alternate se směr střídá v rámci skupiny: pady jedné skupiny brnkají na střídačku jako jedna brumle. Pad se skupinou Off střídá směr sám pro sebe.</p>
 
-        <h3>Výchozí sada</h3>
-        <p>Při prvním spuštění a v každé nové instanci pluginu mají pady tuto sadu. Pady 1 a 2 jsou jedna brumle, druhý zní krátce; pady 9–16 opakují pady 1–8 o kvintu výš a ze skupin 1–4 jsou 5–8.</p>
+        <h3 id="default-kit">Výchozí sada</h3>
+        <p>Při prvním spuštění a v každé nové instanci pluginu mají pady tuto sadu; <span class="ui">Kit › Default kit</span> ji vrátí. Pady 1 a 2 jsou jedna brumle, druhý zní krátce; pady 9–16 opakují pady 1–8 o kvintu výš a ze skupin 1–4 jsou 5–8.</p>
         <table>
           <thead>
             <tr><th>Pad</th><th>Program</th><th>Nota</th><th>Skupina</th></tr>
@@ -334,8 +352,8 @@
         <figure class="fig">
           <div class="view" style="--iw:988;--ih:686">
             <img src="../assets/manual/send-to-pad.png" alt="Okénko Send to pad s dotazem, zda nahradit pad 05">
-            <div class="mark" style="--x:6.3;--y:36.4;--w:20.9;--h:11.1"><b>1</b></div>
-            <div class="mark" style="--x:5.4;--y:74.8;--w:89.4;--h:17.2"><b>2</b></div>
+            <div class="mark" style="--x:6.3;--y:34.4;--w:21.7;--h:12.1"><b>1</b></div>
+            <div class="mark" style="--x:6.1;--y:72.9;--w:89.1;--h:17.8"><b>2</b></div>
           </div>
         </figure>
         <p>Send to pad udělá ze zvuku vyladěného na klaviatuře pad.</p>
@@ -345,7 +363,83 @@
           <li>Klikněte na pad, který chcete nahradit <span class="n">1</span>. Brumle se zeptá <span class="n">2</span>, jestli ho opravdu nahradit, a uvede pad i výšku.</li>
           <li>Kliknutím na <span class="ui">Replace</span> (nebo klávesou Return) zvuk zkopírujete; <span class="ui">Cancel</span> (nebo Esc) pad nechá, jak byl.</li>
         </ol>
-        <p>Pad převezme všechny knoby, přepínače a míry zvuku klaviatury, název jeho programu a jako výšku poslední zahranou notu (C2, pokud žádná nezazněla). Svou skupinu si ponechá.</p>
+        <p>Pad převezme všechny knoby, přepínače a míry zvuku klaviatury, jeho program, preset, ze kterého zvuk pochází (pokud nějaký), a jako výšku poslední zahranou notu (C2, pokud žádná nezazněla). Svou skupinu si ponechá.</p>
+      </section>
+
+      <section id="presets">
+        <h2>Presety</h2>
+        <p>Preset je jeden zvuk uložený jako soubor: program, ze kterého vyšel, a všechny knoby, přepínače a míry včetně <span class="ui">Octave</span>. Můžete ho načíst do klaviatury nebo do kteréhokoli padu, kolikrát chcete. Výška a skupina padu jeho součástí nejsou.</p>
+        <figure class="fig">
+          <div class="view" style="--iw:860;--ih:400">
+            <img src="../assets/manual/preset-menu.png" alt="Otevřená nabídka Preset se zaškrtnutým Night drone">
+            <div class="mark" style="--x:41.3;--y:14.5;--w:35.6;--h:13.5"><b>1</b></div>
+            <div class="mark" style="--x:40.9;--y:32.0;--w:35.3;--h:23.5"><b>2</b></div>
+            <div class="mark" style="--x:40.9;--y:62.0;--w:35.3;--h:10.5"><b>3</b></div>
+            <div class="mark" style="--x:40.9;--y:74.0;--w:35.3;--h:10.5"><b>4</b></div>
+          </div>
+          <figcaption>Nabídka Preset se dvěma presety; zvuk klaviatury pochází z Night drone.</figcaption>
+        </figure>
+        <dl class="controls">
+          <dt><span class="n">1</span>Nabídka Preset</dt>
+          <dd>V hlavičce vedle Programu. V jejím názvu je preset, ze kterého pochází zvuk, jejž ukazují knoby, nebo „—“. Nabídka se při každém otevření podívá do složky, takže v ní najdete i preset, který právě uložil plugin v hostitelském programu nebo který jste do složky zkopírovali.</dd>
+          <dt><span class="n">2</span>Načtení presetu</dt>
+          <dd>Kliknutím načtete preset do zvuku, který ukazují knoby: v režimu klaviatury do zvuku klaviatury, v režimu padů do vybraného padu. Ostatní zvuky zůstanou, jak byly. Používaný preset je zaškrtnutý.</dd>
+          <dt><span class="n">3</span>Save as…</dt>
+          <dd>Uloží zvuk, který ukazují knoby, jako preset (viz <a href="#saving">Uložení presetu</a>).</dd>
+          <dt><span class="n">4</span>Delete</dt>
+          <dd>Podnabídka vašich presetů. Brumle se zeptá „Delete “Night drone”? It goes to the Trash.“: <span class="ui">Delete</span> přesune soubor do koše, <span class="ui">Cancel</span> (nebo Return či Esc) ho ponechá. Zvuk, který ze smazaného presetu pochází, si své knoby ponechá.</dd>
+        </dl>
+
+        <h3 id="saving">Uložení presetu</h3>
+        <figure class="fig">
+          <div class="view" style="--iw:920;--ih:480">
+            <img src="../assets/manual/name-popover.png" alt="Okénko pro pojmenování nového presetu">
+            <div class="mark" style="--x:21.2;--y:46.5;--w:57.4;--h:11.5"><b>1</b></div>
+            <div class="mark" style="--x:21.2;--y:61.0;--w:54.0;--h:12.5"><b>2</b></div>
+            <div class="mark" style="--x:60.9;--y:76.3;--w:28.5;--h:11.5"><b>3</b></div>
+          </div>
+        </figure>
+        <ol>
+          <li>Nastavte zvuk a zvolte <span class="ui">Preset › Save as…</span>.</li>
+          <li>Napište název <span class="n">1</span>. Pole začíná názvem používaného presetu, pokud nějaký je. Pod ním Brumle uvádí, co se uloží <span class="n">2</span>.</li>
+          <li>Klikněte na <span class="ui">Save</span> <span class="n">3</span> nebo stiskněte Return. <span class="ui">Cancel</span> nebo Esc nic neuloží.</li>
+        </ol>
+        <p>Název může mít nejvýš 60 znaků. Mezery na jeho koncích se vynechají a „/“ a „:“ se změní na „-“. Pokud preset s tímto názvem už existuje (na velikosti písmen nezáleží), Brumle se zeptá „Replace “Night drone”?“: <span class="ui">Replace</span> ho přepíše, <span class="ui">Cancel</span> vás vrátí k názvu. Zvuky, které pocházejí ze staré verze, si ponechají své knoby, ale dvojklik už knob vrátí na hodnotu z nové verze.</p>
+
+        <h3>Používaný preset</h3>
+        <p>Každý zvuk, zvuk klaviatury i zvuk každého padu, si pamatuje preset, ze kterého pochází. Ukazuje to název nabídky a zaškrtnutí, pad ukazuje jeho název a dvojklik vrátí knob na hodnotu z presetu. Otáčení knoby tuto vazbu nezruší. Zruší ji načtení programu a název nabídky pak znovu ukazuje „—“; stejně tak smazání souboru presetu, po kterém dvojklik vrací knob na hodnotu programu.</p>
+
+        <h3>Kde jsou presety uložené</h3>
+        <p>Každý preset je soubor pojmenovaný podle něj, s příponou <span class="ui">.brumle</span>, ve složce <span class="ui">~/Library/Application Support/Brumle/Presets</span>. Aplikace i plugin používají stejnou složku, takže preset uložený v jednom je v nabídce i toho druhého. Soubory můžete zkopírovat na jiný Mac nebo je přejmenovat ve Finderu. Brumle složku vytvoří, až uložíte první preset.</p>
+      </section>
+
+      <section id="kits">
+        <h2>Sady</h2>
+        <p>Sada (kit) je všech šestnáct padů uložených v jednom souboru: zvuk, výška a skupina umlčení každého padu a preset, ze kterého každý zvuk pochází. Načtení sady nahradí všech šestnáct padů najednou; zvuk klaviatury i režim zůstanou, jak byly.</p>
+        <figure class="fig">
+          <div class="view" style="--iw:812;--ih:476">
+            <img src="../assets/manual/kit-menu.png" alt="Otevřená nabídka Kit vedle padů">
+            <div class="mark" style="--x:70.9;--y:81.9;--w:17.0;--h:10.9"><b>1</b></div>
+            <div class="mark" style="--x:66.0;--y:24.8;--w:32.5;--h:19.7"><b>2</b></div>
+            <div class="mark" style="--x:66.0;--y:49.6;--w:32.5;--h:9.2"><b>3</b></div>
+            <div class="mark" style="--x:66.0;--y:59.7;--w:32.5;--h:9.2"><b>4</b></div>
+            <div class="mark" style="--x:66.0;--y:69.8;--w:32.5;--h:9.2"><b>5</b></div>
+          </div>
+          <figcaption>Nabídka Kit v režimu padů se dvěma sadami.</figcaption>
+        </figure>
+        <dl class="controls">
+          <dt><span class="n">1</span>Kit</dt>
+          <dd>Nabídka vedle padů v režimu padů. Žádná sada není zaškrtnutá: po načtení se pady sady upravují každý zvlášť.</dd>
+          <dt><span class="n">2</span>Vaše sady</dt>
+          <dd>Kliknutím sadu načtete do padů. Pad, jehož preset ve složce Presets stále je, se s ním znovu propojí.</dd>
+          <dt><span class="n">3</span>Default kit</dt>
+          <dd>Vrátí sadu, se kterou Brumle začíná (viz <a href="#default-kit">Výchozí sada</a>).</dd>
+          <dt><span class="n">4</span>Save kit as…</dt>
+          <dd>Uloží šestnáct padů jako sadu. Pojmenování funguje stejně jako u presetu (viz <a href="#saving">Uložení presetu</a>).</dd>
+          <dt><span class="n">5</span>Delete kit</dt>
+          <dd>Podnabídka vašich sad. Po potvrzení jde soubor sady do koše.</dd>
+        </dl>
+        <p>Sady jsou soubory s příponou <span class="ui">.brumlekit</span> ve složce <span class="ui">~/Library/Application Support/Brumle/Kits</span>, které aplikace i plugin sdílejí stejně jako presety.</p>
       </section>
 
       <section id="amounts">
@@ -354,7 +448,7 @@
         <figure class="fig">
           <div class="view" style="--iw:2200;--ih:1410">
             <img src="../assets/manual/lfo1-amounts.png" alt="Okno se zapnutým LFO 1: knoby ukazují míry LFO 1">
-            <div class="mark" style="--x:74.0;--y:2.8;--w:6.7;--h:4.1"><b>1</b></div>
+            <div class="mark" style="--x:67.3;--y:2.8;--w:6.6;--h:4.1"><b>1</b></div>
             <div class="mark" style="--x:38.8;--y:19.7;--w:6.7;--h:12.1"><b>2</b></div>
             <div class="mark" style="--x:1.6;--y:45.2;--w:6.7;--h:12.1"><b>3</b></div>
             <div class="mark" style="--x:1.6;--y:19.7;--w:6.7;--h:12.1"><b>4</b></div>
@@ -378,7 +472,7 @@
         <figure class="fig">
           <div class="view" style="--iw:2200;--ih:1410">
             <img src="../assets/manual/vel-amounts.png" alt="Okno se zapnutým VEL: knoby ukazují míry síly úderu">
-            <div class="mark" style="--x:88.8;--y:2.8;--w:5.7;--h:4.1"><b>1</b></div>
+            <div class="mark" style="--x:82.0;--y:2.8;--w:5.7;--h:4.1"><b>1</b></div>
             <div class="mark" style="--x:1.6;--y:19.7;--w:6.7;--h:12.1"><b>2</b></div>
             <div class="mark" style="--x:38.8;--y:19.7;--w:6.7;--h:12.1"><b>3</b></div>
             <div class="mark" style="--x:77.8;--y:19.7;--w:6.7;--h:12.1"><b>4</b></div>
@@ -389,6 +483,69 @@
         <p>Knob stojí tam, kam ho dá úder plnou silou. Slabší úder ho posune o díl dráhy rovný míra × (1 − síla úderu), kde síla úderu jde od 0 do 1 (MIDI 127 je 1). Kladná míra znamená „čím silnější úder, tím vyšší hodnota“: s mírou Ring +40 % postaví úder poloviční silou knob Ring o 20 % jeho dráhy níž, takže slabé údery znějí kratší dobu. Záporná míra funguje obráceně. Síla úderu je pro celý úder pevná; pohyby LFO se k ní přičítají.</p>
         <p><b>Výjimkou je Volume.</b> Jeho míra VEL místo toho násobí zesílení číslem 1 − míra × (1 − síla úderu): klasická závislost hlasitosti na síle úderu. Na +100 % dostane úder poloviční silou poloviční zesílení (−6 dB), navíc k tomu, co s brnknutím udělá <span class="ui">Vel Sens</span>; na 0 % mění síla úderu hlasitost jen přes <span class="ui">Vel Sens</span>.</p>
         <p>Síla úderu může hýbat knoby Ring, Damp, Edge, Offset, Body, Buzz, Clang, Vary, Vowel, Sweep, Sweep Time, Reso, Throat, Throat Tune, Open, Close, Breath, Puff, Puff Time, Air, Volume, Pan, Tune, LFO 1 Rate a LFO 2 Rate. Přepínače, Octave, Bend&gt;Vowel a Vel Sens míru VEL nemají: Vel Sens řídí samotné brnknutí.</p>
+      </section>
+
+      <section id="midi">
+        <h2>MIDI ovladače</h2>
+        <p>Každý knob a přepínač zvuku klaviatury může sledovat MIDI ovladač (CC): knob, fader nebo pedál vaší MIDI klaviatury či kontroléru. Každý má svůj standardní ovladač (viz tabulka níže), takže kontrolér, který posílá tato čísla, funguje hned, a kterýkoli z nich se může naučit jiný.</p>
+        <figure class="fig">
+          <div class="view" style="--iw:2200;--ih:1410">
+            <img src="../assets/manual/midi-learn.png" alt="Okno se zapnutým MIDI: každý prvek ukazuje svůj ovladač a Vowel čeká na nový">
+            <div class="mark" style="--x:88.3;--y:2.8;--w:6.2;--h:4.1"><b>1</b></div>
+            <div class="mark" style="--x:1.6;--y:19.7;--w:6.7;--h:12.1"><b>2</b></div>
+            <div class="mark" style="--x:24.5;--y:22.4;--w:12.5;--h:6.6"><b>3</b></div>
+            <div class="mark" style="--x:38.8;--y:19.7;--w:6.7;--h:12.1"><b>4</b></div>
+          </div>
+          <figcaption>Zapnuté MIDI: každý prvek ukazuje svůj ovladač a Vowel na jeden čeká.</figcaption>
+        </figure>
+        <dl class="controls">
+          <dt><span class="n">1</span>Zobrazení ovladačů</dt>
+          <dd>Klikněte v hlavičce na <span class="ui">MIDI</span>; tlačítko se rozsvítí stříbrně. Každý knob pod sebou místo hodnoty ukazuje svůj ovladač <span class="n">2</span> a každý přepínač ho ukazuje místo svých voleb <span class="n">3</span>: „CC 72“, nebo „—“, když žádný nemá. Dalším kliknutím na <span class="ui">MIDI</span> se hodnoty vrátí.</dd>
+          <dt><span class="n">4</span>Naučení ovladače</dt>
+          <dd>Klikněte na knob nebo přepínač: objeví se čárkovaný kruh a nápis „move a control“. Pohněte knobem nebo faderem kontroléru: prvek si vezme první ovladač, který se pohne, a nastaví se tam, kde tento ovladač stojí. Dalším kliknutím na prvek naslouchání ukončíte; ukončí ho i vypnutí MIDI, změna režimu, přepnutí do jiné aplikace nebo zavření okna.</dd>
+          <dt>Standardní ovladač</dt>
+          <dd>Dvojklik vrátí knobu nebo přepínači jeho standardní ovladač.</dd>
+          <dt>Nabídka po kliknutí pravým tlačítkem</dt>
+          <dd>Klikněte na knob nebo přepínač se stisknutou klávesou Control (nebo dvěma prsty): <span class="ui">No controller</span> mu ovladač odebere, <span class="ui">Back to CC 72</span> (s jeho standardním číslem) mu vrátí standardní. <span class="ui">Every control back to its standard controller</span> v této nabídce i v nabídce tlačítka <span class="ui">MIDI</span> vrátí standardní ovladače všem.</dd>
+        </dl>
+        <ul>
+          <li><b>Jeden ovladač hýbe jedním prvkem.</b> Ovladač, který se naučí jeden prvek, se odebere prvku, který ho měl dosud.</li>
+          <li>Ovladač nastaví svůj prvek podle své hodnoty: 0 je začátek dráhy, 127 její konec. U knobu, jehož střed je nula (Offset, Sweep, Breath, Pan, Tune, Octave), je 64 přesně uprostřed. Přepínač rozloží své volby po rozsahu 0–127.</li>
+          <li>Ovladače fungují na všech MIDI kanálech; aplikace je přijímá na kanálech zvolených v <a href="#settings">nastavení</a>.</li>
+          <li><b>Ovladače hýbou zvukem klaviatury, i v režimu padů.</b> Pady ani míry LFO a VEL ovladače nemají, proto jsou při zapnutém MIDI v režimu padů prvky ztlumené a ukazují „—“.</li>
+          <li>Znějící nota sleduje ovladač stejně jako otočení knobem (viz <a href="#keyboard">Režim klaviatury</a>), od svého dalšího řídicího kroku, o pár milisekund později.</li>
+          <li>Ovladače patří aplikaci nebo pluginu, ne zvuku: načtení programu, presetu ani sady je nezmění. Aplikace je má ve svém nastavení, takže po novém spuštění zůstanou. Plugin je ukládá s projektem hostitelského programu, každá instance své.</li>
+          <li>V pluginu se knob, kterým pohne ovladač, ohlásí hostitelskému programu, jako byste jím otočili vy.</li>
+        </ul>
+
+        <h3>Standardní ovladače</h3>
+        <p>Kde General MIDI dává ovladači význam, který se hodí, prvek ho dostane: Volume 7, Pan 10, Vowel 74 (jas), Reso 71 (barva), Ring 72 (doznívání), Breath 2 (dechový ovladač) a Vel Sens 73 (náběh). Ostatní dostanou čísla, která MIDI nechává bez významu.</p>
+        <table>
+          <thead>
+            <tr><th>Prvek</th><th>CC</th><th>Prvek</th><th>CC</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Ring</td><td>72</td><td>Throat Tune</td><td>27</td></tr>
+            <tr><td>Edge</td><td>14</td><td>Open</td><td>28</td></tr>
+            <tr><td>Offset</td><td>15</td><td>Close</td><td>29</td></tr>
+            <tr><td>Body</td><td>16</td><td>Breath</td><td>2</td></tr>
+            <tr><td>Buzz</td><td>17</td><td>Puff</td><td>30</td></tr>
+            <tr><td>Clang</td><td>18</td><td>Puff Time</td><td>31</td></tr>
+            <tr><td>Vel Sens</td><td>73</td><td>Air</td><td>85</td></tr>
+            <tr><td>Stroke</td><td>19</td><td>Volume</td><td>7</td></tr>
+            <tr><td>Damp</td><td>20</td><td>Pan</td><td>10</td></tr>
+            <tr><td>Key Up</td><td>21</td><td>Tune</td><td>86</td></tr>
+            <tr><td>Vary</td><td>22</td><td>Octave</td><td>87</td></tr>
+            <tr><td>Vowel</td><td>74</td><td>Bend&gt;Vowel</td><td>88</td></tr>
+            <tr><td>Sweep</td><td>23</td><td>LFO Start</td><td>89</td></tr>
+            <tr><td>Sweep Time</td><td>24</td><td>LFO 1 Rate</td><td>90</td></tr>
+            <tr><td>Curve</td><td>25</td><td>LFO 1 Shape</td><td>102</td></tr>
+            <tr><td>Reso</td><td>71</td><td>LFO 2 Rate</td><td>103</td></tr>
+            <tr><td>Throat</td><td>26</td><td>LFO 2 Shape</td><td>104</td></tr>
+          </tbody>
+        </table>
+        <p><b>Vyhrazené ovladače.</b> CC 0–1, 6, 32, 38, 64, 96–101 a 120–127 si ponechávají svůj význam v MIDI (výběr banky, zadávání dat, sustain, čísla parametrů a zprávy kanálu). Žádný prvek je nedostane a učení je přeskakuje. CC 1 je modulační kolečko, které hýbe knobem Close (viz <a href="#keyboard">Režim klaviatury</a>); CC 121 vrátí kolečka do klidu a CC 120 a 123 zastaví všechny hlasy.</p>
+        <p>Volné k naučení, bez významu v Brumli: CC 3–5, 8, 9, 11–13, 33–37, 39–63, 65–70, 75–84, 91–95 a 105–119.</p>
       </section>
 
       <section id="settings">
@@ -422,9 +579,9 @@
           <dt>Automatizace</dt>
           <dd>Hostitelský program vidí 81 parametrů: zvuk klaviatury, tedy jeho 34 knobů a přepínačů, 22 měr LFO a 25 měr VEL. Otáčení knobem v režimu klaviatury lze nahrát jako automatizaci a automatizace hýbe knoby. Pady, jejich výšky a skupiny ani režim parametry nejsou: automatizace dosáhne jen na zvuk klaviatury.</dd>
           <dt>Presety</dt>
-          <dd>Sedm programů jsou tovární presety pluginu; načítají se do zvuku klaviatury.</dd>
+          <dd>Sedm programů jsou tovární presety pluginu; načítají se do zvuku klaviatury. Vaše vlastní presety jsou v nabídce Preset v okně pluginu, společné s aplikací (viz <a href="#presets">Presety</a>). Když jeden načtete do klaviatury, ukáže hostitelský program jeho název jako preset pluginu; volba továrního presetu v hostitelském programu tuto vazbu zruší.</dd>
           <dt>Uloženo s projektem</dt>
-          <dd>Zvuk klaviatury a jeho program, režim a všech šestnáct padů (zvuk, výška a skupina). Úprava padu označí projekt jako změněný půl sekundy poté, co přestanete, nebo když okno zavřete. Okno pluginu se otevírá s vybraným padem 01.</dd>
+          <dd>Zvuk klaviatury a jeho program, režim, všech šestnáct padů (zvuk, výška a skupina), preset, ze kterého každý zvuk pochází, MIDI ovladače a vybraný pad. Úprava padu označí projekt jako změněný půl sekundy poté, co přestanete, nebo když okno zavřete. Okno pluginu se otevře na naposledy vybraném padu. Projekt uložený starší verzí se otevře se standardními ovladači a vybraným padem 01.</dd>
           <dt>Latence</dt>
           <dd>Pod 88,2 kHz počítá Brumle hlasy na dvojnásobné frekvenci hostitele, což zvuk zpozdí o 29 vzorků (0,6 ms při 48 kHz). Plugin to hostitelskému programu hlásí a ten zpoždění vyrovná. Od 88,2 kHz výš je latence nulová.</dd>
           <dt>Výstup</dt>
