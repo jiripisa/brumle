@@ -77,3 +77,13 @@ dl.controls dd { margin: .2rem 0 0; }
   .layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .toc { position: static; max-height: none; border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
 }
+
+/* Polar Khomus reading surface; marked-figure geometry stays unchanged. */
+.title { padding-bottom: 3rem; }
+.title h1 { color: var(--ink); font-weight: 500; }
+.toc { padding-top: .5rem; }
+.toc a { color: var(--ink3); }
+.toc a:hover { color: var(--accent); border-left-color: var(--accent); }
+article h3 { font-size: 1.65rem; font-weight: 500; }
+article > section + section { border-top: 1px solid var(--line); }
+article > section { padding-bottom: 2.5rem; }
