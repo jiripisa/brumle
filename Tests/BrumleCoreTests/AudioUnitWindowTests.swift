@@ -440,11 +440,13 @@ struct AudioUnitWindowTests {
 
     @Test("The window opens without the component's artwork, at the panel's width")
     func windowWithoutArt() throws {
+        let before = Artwork.bundle
+        defer { Artwork.bundle = before }                     // the factory points it at its own bundle
         let instrument = try Instrument()
         let view = try #require(BrumleAUViewFactory().uiView(forAudioUnit: instrument.unit, with: .zero))
         // In the tests the factory's class lives in the test bundle, which holds no artwork.
         #expect(Artwork.bundle == Bundle(for: BrumleAUViewFactory.self))
-        #expect(Artwork.background == nil)
+        #expect(Artwork.bundle.url(forResource: "background", withExtension: "png", subdirectory: "Art") == nil)
         #expect(view.frame.width == InstrumentPanel<EmptyView, EmptyView>.width)
         #expect(view.frame.height > 400)
     }
