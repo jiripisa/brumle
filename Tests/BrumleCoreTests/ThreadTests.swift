@@ -4,7 +4,8 @@ import Testing
 @testable import BrumleCore
 
 /// The engine's thread rules: the audio thread renders while any other thread changes knobs,
-/// programs, the mode and the pads and posts MIDI. Run under `swift test --sanitize=thread`.
+/// programs, the mode, the pads and the controllers, learns, and posts MIDI (controllers that
+/// move the knobs among it). Run under `swift test --sanitize=thread`.
 @Suite("Threads")
 struct ThreadTests {
 
@@ -34,7 +35,7 @@ struct ThreadTests {
             var random = Lcg(state: 0x5EED)
             while !control.stop.withLock({ $0 }) {
                 let set: SoundSet = random.next(3) == 0 ? .keyboard : .pad(random.next(16))
-                switch random.next(9) {
+                switch random.next(12) {
                 case 0, 1, 2:
                     synth.setNormalisedValue(Float(random.next(1001)) / 1000, of: parameters[random.next(parameters.count)], in: set)
                 case 3: synth.loadProgram(random.next(programs), into: set)
@@ -42,6 +43,14 @@ struct ThreadTests {
                 case 5: synth.setPadNote(random.next(128), pad: random.next(16))
                 case 6: synth.setPadGroup(random.next(5) == 0 ? nil : 1 + random.next(16), pad: random.next(16))
                 case 7: synth.sendToPad(random.next(16))
+                case 8: synth.postMIDI(status: 0xB0, data1: UInt8(random.next(128)), data2: UInt8(random.next(128)))
+                case 9: synth.setController(random.next(4) == 0 ? nil : random.next(128), of: parameters[random.next(parameters.count)])
+                case 10:
+                    switch random.next(3) {
+                    case 0: synth.learn(parameters[random.next(parameters.count)])
+                    case 1: synth.learn(nil)
+                    default: synth.resetControllers()
+                    }
                 default:
                     let note = random.next(2) == 0 ? 36 + random.next(16) : random.next(128)
                     if random.next(3) == 0 { synth.noteOff(note) } else { synth.noteOn(note, velocity: 1 + random.next(127)) }
