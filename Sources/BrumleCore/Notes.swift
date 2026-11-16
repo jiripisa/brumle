@@ -12,7 +12,7 @@ public enum Notes {
 
     private static let names = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
 
-    /// "C2" for 36, "C♯3" for 61. A note outside `range` counts as the nearest valid one.
+    /// "C2" for 36, "C♯4" for 61. A note outside `range` counts as the nearest valid one.
     public static func name(_ note: Int) -> String {
         let note = min(max(note, range.lowerBound), range.upperBound)
         return "\(names[note % 12])\(note / 12 - 1)"
