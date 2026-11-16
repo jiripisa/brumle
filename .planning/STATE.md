@@ -1,5 +1,6 @@
 # Brumle — State
 
+- 2026-11-16 — version 0.1.0 released (phase 06). No phase open.
 - 2026-11-16 — phase 05 (presets, kits, MIDI learn) done: user presets loaded into the keyboard
   or a pad, kits of all sixteen pads, a MIDI controller with learn on every knob and switch of
   the keyboard's sound; the plug-in saves controllers, presets in use and the selected pad.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-11-16
 
 - First version.
 - Requires macOS 26 or later.
@@ -19,4 +19,3 @@
 - A pad is named after its preset, or after its program when it has none.
 - MIDI controllers: every knob and switch of the keyboard's sound follows a MIDI controller, with a standard one ready; the new MIDI button shows them and lets any control learn another with a click.
 - The plug-in saves the MIDI controllers, the presets in use and the selected pad with the project, and its window opens on that pad.
-- The LFO 1, LFO 2, VEL and MIDI buttons light up clearly while they are on.
