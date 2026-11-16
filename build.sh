@@ -76,7 +76,7 @@ cp "Resources/AudioUnit-Info.plist" "$COMPONENT/Contents/Info.plist"
 echo -n "BNDL????" > "$COMPONENT/Contents/PkgInfo"
 APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
 IFS=. read -r V_MAJOR V_MINOR V_PATCH <<< "$APP_VERSION"
-AU_VERSION=$(( (${V_MAJOR:-0} << 16) | (${V_MINOR:-0} << 8) | ${V_PATCH:-0} ))
+AU_VERSION=$(( (10#${V_MAJOR:-0} << 16) | (10#${V_MINOR:-0} << 8) | 10#${V_PATCH:-0} ))
 /usr/libexec/PlistBuddy \
     -c "Set :CFBundleShortVersionString $APP_VERSION" \
     -c "Set :CFBundleVersion $APP_VERSION" \
