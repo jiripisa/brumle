@@ -1,6 +1,6 @@
 # Brumle — design of the instrument (engine, two modes, architecture)
 
-Status: draft for the author's approval — 2026-11-15.
+Status: approved 2026-11-15; phase 02 built (2026-11-16).
 
 Sources: the research report `.planning/research/reports/Jaw harp acoustics and playing.md`
 (with its notes) and the listening prototype `.planning/research/spike/brumle_spike.cpp`.
