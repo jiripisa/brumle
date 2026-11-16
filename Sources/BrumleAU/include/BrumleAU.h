@@ -32,8 +32,11 @@
 //                 keyboard set's first, then pad 1...16's; "" for none. The engine does not hold
 //                 them: the window sets them, the unit keeps a copy and saves it with its state.
 //                 An array of another length or with anything but strings in it is refused
-//                 (kAudioUnitErr_InvalidPropertyValue). As for every CF-typed property, a get
-//                 hands the array over retained (+1): the caller releases it. Main thread only.
+//                 (kAudioUnitErr_InvalidPropertyValue); a name longer than a preset's (60
+//                 characters) counts as none. As for every CF-typed property, a get hands the
+//                 array over retained (+1): the caller releases it. The window uses it from the
+//                 main thread; the unit guards it with a lock of its own, since a host saves and
+//                 restores the state, names included, on a thread of its choosing.
 enum
 {
     kBrumleProperty_Engine       = 64001,

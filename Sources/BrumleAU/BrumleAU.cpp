@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <mutex>
 #include <vector>
 
 namespace {
@@ -105,19 +106,41 @@ bool getInt(CFDictionaryRef dict, CFStringRef key, int& out)
     return true;
 }
 
+// The longest name a preset can have, in characters: BrumleCore's PresetLibrary.longestName.
+constexpr CFIndex kLongestName = 60;
+
 // "" (no preset), retained.
 CFStringRef copyNoName() { return static_cast<CFStringRef>(CFRetain(CFSTR(""))); }
 
-// A copy of the string under `key`; "" (none) if there is none.
-CFStringRef copyName(CFDictionaryRef dict, CFStringRef key)
+// Whether a name is no longer than a preset's can be. Characters are counted as Swift counts
+// them, near enough: composed character sequences, so that "é" written as e + accent is one.
+bool fitsAsName(CFStringRef name)
 {
-    const void* value = CFDictionaryGetValue(dict, key);
-    if (!value || CFGetTypeID(value) != CFStringGetTypeID()) return copyNoName();
+    const CFIndex length = CFStringGetLength(name);
+    if (length <= kLongestName) return true;          // a character is at least one UTF-16 unit
+    CFIndex characters = 0;
+    for (CFIndex at = 0; at < length; ++characters)
+    {
+        if (characters == kLongestName) return false;
+        const CFRange character = CFStringGetRangeOfComposedCharactersAtIndex(name, at);
+        at = character.location + character.length;
+    }
+    return true;
+}
+
+// A copy of a name from outside the unit; "" (none) for one that is not a string or is longer
+// than a preset's name can be.
+CFStringRef copyName(CFTypeRef value)
+{
+    if (!value || CFGetTypeID(value) != CFStringGetTypeID() || !fitsAsName(static_cast<CFStringRef>(value))) return copyNoName();
     return CFStringCreateCopy(nullptr, static_cast<CFStringRef>(value));
 }
 
+// The name under `key`, as copyName gives it.
+CFStringRef copyName(CFDictionaryRef dict, CFStringRef key) { return copyName(CFDictionaryGetValue(dict, key)); }
+
 // A copy of what the window gives as the presets in use: an array of one string per set, nothing
-// else. nullptr if it is not that.
+// else; nullptr if it is not that. A name longer than a preset's can be counts as none.
 CFArrayRef copyNames(CFTypeRef value)
 {
     if (!value || CFGetTypeID(value) != CFArrayGetTypeID()) return nullptr;
@@ -131,7 +154,7 @@ CFArrayRef copyNames(CFTypeRef value)
     CFMutableArrayRef copy = CFArrayCreateMutable(nullptr, BRUMLE_NUM_SETS, &kCFTypeArrayCallBacks);
     for (CFIndex i = 0; i < BRUMLE_NUM_SETS; ++i)
     {
-        CFStringRef name = CFStringCreateCopy(nullptr, static_cast<CFStringRef>(CFArrayGetValueAtIndex(array, i)));
+        CFStringRef name = copyName(CFArrayGetValueAtIndex(array, i));
         CFArrayAppendValue(copy, name);
         CFRelease(name);
     }
@@ -212,11 +235,11 @@ public:
         }
         SetAFactoryPresetAsCurrent(factoryPresets().front());
         // A host may ask for the latency before it initialises the unit.
-        latency_ = brumle_latency(engine_) / kStartRate;
+        latency_.store(brumle_latency(engine_) / kStartRate, std::memory_order_relaxed);
 
         CFMutableArrayRef names = CFArrayCreateMutable(nullptr, BRUMLE_NUM_SETS, &kCFTypeArrayCallBacks);
         for (int set = 0; set < BRUMLE_NUM_SETS; ++set) CFArrayAppendValue(names, CFSTR(""));
-        presetNames_ = ausdk::Owned<CFArrayRef>::from_create(names);
+        presetNames_ = ausdk::Owned<CFArrayRef>::from_create(names);   // nobody else can reach the unit yet
     }
 
     ~BrumleAU() override { brumle_destroy(engine_); }
@@ -238,9 +261,9 @@ public:
         if (format.mChannelsPerFrame < 1 || format.mChannelsPerFrame > 2) return kAudioUnitErr_FormatNotSupported;
         brumle_prepare(engine_, format.mSampleRate);
         const Float64 latency = format.mSampleRate > 0 ? brumle_latency(engine_) / format.mSampleRate : 0.0;
-        if (latency != latency_)
+        if (latency != latency_.load(std::memory_order_relaxed))
         {
-            latency_ = latency;
+            latency_.store(latency, std::memory_order_relaxed);
             PropertyChanged(kAudioUnitProperty_Latency, kAudioUnitScope_Global, 0);
         }
         // A mono output gets both sides mixed: the engine renders stereo into these first. Made
@@ -260,7 +283,7 @@ public:
 
     // Output lags MIDI by the engine's decimator below 88.2 kHz; a note rings at most as long as
     // the longest Ring.
-    Float64 GetLatency() AUSDK_RTSAFE override { return latency_; }
+    Float64 GetLatency() AUSDK_RTSAFE override { return latency_.load(std::memory_order_relaxed); }
     bool SupportsTail() AUSDK_RTSAFE override { return true; }
     Float64 GetTailTime() AUSDK_RTSAFE override { return tail_; }
 
@@ -325,7 +348,7 @@ public:
                     *static_cast<UInt32*>(outData) = selectedPad_.load(std::memory_order_relaxed);
                     return noErr;
                 case kBrumleProperty_PresetNames:
-                    *static_cast<CFArrayRef*>(outData) = static_cast<CFArrayRef>(CFRetain(*presetNames_));   // the caller releases it
+                    *static_cast<CFArrayRef*>(outData) = copyPresetNames();   // the caller releases it
                     return noErr;
                 default:
                     break;
@@ -359,7 +382,7 @@ public:
                 if (inDataSize != sizeof(CFArrayRef)) return kAudioUnitErr_InvalidPropertyValue;
                 CFArrayRef names = copyNames(*static_cast<const CFTypeRef*>(inData));
                 if (!names) return kAudioUnitErr_InvalidPropertyValue;
-                presetNames_ = ausdk::Owned<CFArrayRef>::from_create(names);
+                replacePresetNames(names);
                 return noErr;
             }
         }
@@ -373,7 +396,8 @@ public:
         if (status != noErr || !outData || !*outData || CFGetTypeID(*outData) != CFDictionaryGetTypeID()) return status;
         // The base class made this dictionary a moment ago and nobody else holds it yet.
         const auto state = static_cast<CFMutableDictionaryRef>(const_cast<void*>(*outData));
-        const auto name = [this](int set) { return static_cast<CFStringRef>(CFArrayGetValueAtIndex(*presetNames_, set)); };
+        const auto names = ausdk::Owned<CFArrayRef>::from_create(copyPresetNames());
+        const auto name = [&names](int set) { return static_cast<CFStringRef>(CFArrayGetValueAtIndex(*names, set)); };
 
         CFMutableDictionaryRef pads = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         setInt(pads, CFSTR("mode"), brumle_get_mode(engine_));
@@ -415,14 +439,15 @@ public:
         const auto state = static_cast<CFDictionaryRef>(plist);
         restoreControllers(state);
 
-        CFMutableArrayRef names = CFArrayCreateMutableCopy(nullptr, BRUMLE_NUM_SETS, *presetNames_);
+        const auto before = ausdk::Owned<CFArrayRef>::from_create(copyPresetNames());
+        CFMutableArrayRef names = CFArrayCreateMutableCopy(nullptr, BRUMLE_NUM_SETS, *before);
         const void* stored = CFDictionaryGetValue(state, padsKey());
         const auto pads = stored && CFGetTypeID(stored) == CFDictionaryGetTypeID() ? static_cast<CFDictionaryRef>(stored) : nullptr;
         CFStringRef keyboardName = pads ? copyName(pads, CFSTR("keyboardPreset")) : copyNoName();
         CFArraySetValueAtIndex(names, BRUMLE_KEYBOARD_SET, keyboardName);
         CFRelease(keyboardName);
         if (pads) restorePads(pads, names);
-        presetNames_ = ausdk::Owned<CFArrayRef>::from_create(CFArrayCreateCopy(nullptr, names));
+        replacePresetNames(CFArrayCreateCopy(nullptr, names));
         CFRelease(names);
         return status;
     }
@@ -594,6 +619,25 @@ private:
         for (int i = 0; i < count; ++i) if (controllers[static_cast<size_t>(i)] >= 0) brumle_set_controller(engine_, i, controllers[static_cast<size_t>(i)]);
     }
 
+    // The presets in use, retained (+1), and a new list of them (taken over, made with a Create
+    // call). The window sets them on the main thread, but a host saves and restores the unit's
+    // state on a thread of its choosing, and the SDK does not serialise those calls: whoever
+    // reads them takes a reference of its own under the lock, and the list it reads is never
+    // changed, only replaced. The list replaced is released outside the lock. Never the render
+    // thread's business.
+    CFArrayRef copyPresetNames()
+    {
+        std::lock_guard<std::mutex> lock(presetNamesLock_);
+        return static_cast<CFArrayRef>(CFRetain(*presetNames_));
+    }
+
+    void replacePresetNames(CFArrayRef names)
+    {
+        auto replaced = ausdk::Owned<CFArrayRef>::from_create(names);
+        std::lock_guard<std::mutex> lock(presetNamesLock_);
+        std::swap(presetNames_, replaced);
+    }
+
     // The pads, the mode and the window's pad from "brumle-pads"; each pad the state has brings
     // its preset's name into `names`.
     void restorePads(CFDictionaryRef pads, CFMutableArrayRef names)
@@ -625,10 +669,11 @@ private:
     std::vector<float> heard_;            // the engine's plain value as the unit's parameter last matched it
     unsigned seenChanges_ = 0;            // the engine's count of what MIDI changed, as of the last block
     std::atomic<UInt32> selectedPad_{ 0 }; // the pad the window shows
-    ausdk::Owned<CFArrayRef> presetNames_; // the preset each set came from, "" for none; main thread only
+    std::mutex presetNamesLock_;
+    ausdk::Owned<CFArrayRef> presetNames_; // the preset each set came from, "" for none; under presetNamesLock_
     std::vector<float> scratchLeft_;      // stereo for a mono output, made in Initialize
     std::vector<float> scratchRight_;
-    Float64 latency_ = 0.0;               // seconds, as of the last Initialize (before it: at kStartRate)
+    std::atomic<Float64> latency_{ 0.0 }; // seconds, as of the last Initialize (before it: at kStartRate)
     const Float64 tail_;                  // seconds
 };
 

@@ -383,6 +383,23 @@ struct AudioUnitTests {
         #expect(abs(try instrument.parameter(vowel.index) - vowel.range.lowerBound) < 0.01)
     }
 
+    @Test("A host write and a controller on one knob before one block: the controller, played in the block, wins")
+    func controllerWinsWithinTheBlock() throws {
+        let instrument = try Instrument()
+        let engine = try instrument.engine()
+        let vowel = try #require(Parameters.named("vowel"))
+        try instrument.setParameter("vowel", to: 1000)
+        try instrument.midi(0xB0, 74, 127)
+        _ = try instrument.render()
+        let top = brumle_get_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(vowel.index))
+        #expect(abs(top - vowel.range.upperBound) < 0.01)
+        #expect(try instrument.parameter(vowel.index) == top)
+
+        _ = try instrument.render()                                          // and the host's 1000 is not handed back
+        #expect(try instrument.parameter(vowel.index) == top)
+        #expect(brumle_get_plain(engine, Int32(BRUMLE_KEYBOARD_SET), Int32(vowel.index)) == top)
+    }
+
     // MARK: Saved state
 
     @Test("The saved state brings back the keyboard set, the pads and the mode")
@@ -651,6 +668,11 @@ struct AudioUnitTests {
     @Test("The presets in use are seventeen names: anything else is refused, and the unit keeps a copy")
     func presetNamesAreSeventeen() throws {
         let instrument = try Instrument()
+        var size: UInt32 = 0
+        var writable: DarwinBoolean = false
+        try #require(AudioUnitGetPropertyInfo(instrument.unit, AudioUnitPropertyID(kBrumleProperty_PresetNames), kAudioUnitScope_Global, 0,
+                                              &size, &writable) == noErr)
+        #expect(size == UInt32(MemoryLayout<UnsafeRawPointer>.size) && writable.boolValue)
         #expect(try instrument.presetNames() == [String](repeating: "", count: 17))
         let names = NSMutableArray(array: [String](repeating: "", count: 17))
         let first = NSMutableString(string: "Warm")
@@ -665,6 +687,55 @@ struct AudioUnitTests {
         #expect(AudioUnitSetProperty(instrument.unit, AudioUnitPropertyID(kBrumleProperty_PresetNames), kAudioUnitScope_Global, 0,
                                      &notAnArray, UInt32(MemoryLayout<Unmanaged<CFString>>.size)) == kAudioUnitErr_InvalidPropertyValue)
         #expect(try instrument.presetNames().first == "Warm")
+    }
+
+    @Test("A host saving the project on its own thread while the window sets the presets in use reads whole lists")
+    func presetNamesWhileSaving() async throws {
+        let instrument = try Instrument()
+        nonisolated(unsafe) let unit = instrument.unit
+        let saving = Task.detached {
+            var whole = true
+            for _ in 0..<200 {
+                var state: Unmanaged<CFPropertyList>?
+                var size = UInt32(MemoryLayout<Unmanaged<CFPropertyList>?>.size)
+                guard AudioUnitGetProperty(unit, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &state, &size) == noErr,
+                      let saved = state?.takeRetainedValue() as? [String: Any],
+                      let pads = saved["brumle-pads"] as? [String: Any],
+                      let keyboard = pads["keyboardPreset"] as? String,
+                      let list = pads["pads"] as? [[String: Any]] else { return false }
+                whole = whole && list.allSatisfy { $0["preset"] as? String == keyboard }    // one list, never a mix
+            }
+            return whole
+        }
+        for round in 0..<200 {
+            instrument.setPresetNames([String](repeating: "Round \(round)", count: 17) as CFArray)
+        }
+        #expect(await saving.value)
+    }
+
+    @Test("A preset name longer than a preset's can be (60 characters) counts as none, from the window or from a project")
+    func presetNamesAreCapped() throws {
+        let instrument = try Instrument()
+        let longest = String(repeating: "e\u{301}", count: 60)              // 60 characters, 120 UTF-16 units
+        let tooLong = String(repeating: "a", count: 61)
+        #expect(longest.count == PresetLibrary.longestName)
+        var names = [String](repeating: "", count: 17)
+        names[0] = longest
+        names[1] = tooLong
+        names[2] = "Kick"
+        #expect(instrument.setPresetNames(names as CFArray) == noErr)
+        #expect(try instrument.presetNames() == [longest, "", "Kick"] + [String](repeating: "", count: 14))
+
+        var state = try #require(try instrument.classInfo() as? [String: Any])
+        var pads = try #require(state["brumle-pads"] as? [String: Any])
+        pads["keyboardPreset"] = tooLong
+        var list = try #require(pads["pads"] as? [[String: Any]])
+        list[1]["preset"] = String(repeating: "b", count: 10_000)
+        list[2]["preset"] = longest
+        pads["pads"] = list
+        state["brumle-pads"] = pads
+        try instrument.restore(state as CFDictionary)
+        #expect(try instrument.presetNames() == ["", "", "", longest] + [String](repeating: "", count: 13))
     }
 
     @Test("Telling the unit its pads changed tells the host its saved state changed")
